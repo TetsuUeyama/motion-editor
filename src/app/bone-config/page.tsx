@@ -1,51 +1,64 @@
+// クライアントコンポーネント宣言（ブラウザ側で実行）
 'use client';
 
+// Reactのフック群をインポート
 import { useEffect, useRef, useState, useCallback } from 'react';
+// Next.jsのページ遷移用Linkコンポーネント
 import Link from 'next/link';
+// Babylon.jsのコアモジュール（3Dレンダリングエンジン）
 import {
   Engine, Scene, ArcRotateCamera, HemisphericLight,
   Vector3, Color4, Mesh, VertexData, ShaderMaterial, Effect,
   MeshBuilder, StandardMaterial, Color3, Plane, PointerEventTypes,
   TransformNode, Quaternion,
 } from '@babylonjs/core';
+// VOXファイルの読み込みとメッシュ構築用の定数
 import { loadVoxFile, SCALE, FACE_DIRS, FACE_VERTS, FACE_NORMALS } from '@/lib/vox-parser';
 import type { VoxelEntry } from '@/lib/vox-parser';
+// モデルレジストリ（利用可能なボクセルモデルの一覧）
 import { MODEL_REGISTRY, DEFAULT_MODEL_ID } from '@/lib/model-registry';
 import type { ModelEntry } from '@/lib/model-registry';
 
 // ========================================================================
-// Key Markers
+// マーカー定義
+// ユーザーがボクセルモデル上に配置する解剖学的マーカー（顎、手首、肘、膝、股間）
+// これらのマーカー位置から全41ボーンの位置を自動計算する
 // ========================================================================
 interface MarkerDef {
-  name: string;
-  label: string;
-  color: string;
-  side: 'center' | 'left' | 'right'; // center=単体, left/right=対
-  mirrorOf?: string; // right側のみ: 対応するleft側のname
+  name: string;       // マーカーの識別名（例: "Chin", "LeftWrist"）
+  label: string;      // UI表示用ラベル（日本語併記）
+  color: string;      // マーカー球体の色（16進カラーコード）
+  side: 'center' | 'left' | 'right'; // center=中央（単体）, left/right=左右対称ペア
+  mirrorOf?: string;  // right側マーカーのみ: ミラー元のleft側マーカー名
 }
 
+// 8つのマーカー定義（中央2つ + 左3つ + 右3つ）
+// 左右対称モード時は左側のみ配置し、右側は自動ミラーされる
 const MARKER_DEFS: MarkerDef[] = [
-  { name: 'Chin',        label: 'Chin (顎)',          color: '#ffee44', side: 'center' },
-  { name: 'Groin',       label: 'Groin (股間)',        color: '#ff4444', side: 'center' },
-  { name: 'LeftWrist',   label: 'L.Wrist (左手首)',    color: '#4444ff', side: 'left' },
-  { name: 'LeftElbow',   label: 'L.Elbow (左肘)',      color: '#4488ff', side: 'left' },
-  { name: 'LeftKnee',    label: 'L.Knee (左膝)',       color: '#44ff66', side: 'left' },
-  { name: 'RightWrist',  label: 'R.Wrist (右手首)',    color: '#ff4466', side: 'right', mirrorOf: 'LeftWrist' },
-  { name: 'RightElbow',  label: 'R.Elbow (右肘)',      color: '#ff4488', side: 'right', mirrorOf: 'LeftElbow' },
-  { name: 'RightKnee',   label: 'R.Knee (右膝)',       color: '#88ff44', side: 'right', mirrorOf: 'LeftKnee' },
+  { name: 'Chin',        label: 'Chin (顎)',          color: '#ffee44', side: 'center' },  // 顎（頭部の基準点）
+  { name: 'Groin',       label: 'Groin (股間)',        color: '#ff4444', side: 'center' },  // 股間（体幹と脚の分岐点）
+  { name: 'LeftWrist',   label: 'L.Wrist (左手首)',    color: '#4444ff', side: 'left' },    // 左手首
+  { name: 'LeftElbow',   label: 'L.Elbow (左肘)',      color: '#4488ff', side: 'left' },    // 左肘
+  { name: 'LeftKnee',    label: 'L.Knee (左膝)',       color: '#44ff66', side: 'left' },    // 左膝
+  { name: 'RightWrist',  label: 'R.Wrist (右手首)',    color: '#ff4466', side: 'right', mirrorOf: 'LeftWrist' },  // 右手首（左手首のミラー）
+  { name: 'RightElbow',  label: 'R.Elbow (右肘)',      color: '#ff4488', side: 'right', mirrorOf: 'LeftElbow' },  // 右肘（左肘のミラー）
+  { name: 'RightKnee',   label: 'R.Knee (右膝)',       color: '#88ff44', side: 'right', mirrorOf: 'LeftKnee' },   // 右膝（左膝のミラー）
 ];
 
+// 3次元座標を表す型
 interface Vec3 { x: number; y: number; z: number; }
+// マーカー名→座標のマップ型
 type MarkerData = Record<string, Vec3>;
 
 // ========================================================================
-// Bone definitions (all 41 Mixamo standard bones)
+// ボーン定義（Mixamo標準41ボーン）
+// ボーンの階層構造、UI表示名、色を定義する
 // ========================================================================
 interface BoneDef {
-  name: string;
-  label: string;
-  parent: string | null;
-  color: string;
+  name: string;          // ボーン名（Mixamo標準名）
+  label: string;         // UI表示用ラベル
+  parent: string | null; // 親ボーン名（ルートはnull）
+  color: string;         // UI表示用の色
 }
 
 const BONE_DEFS: BoneDef[] = [
@@ -100,27 +113,32 @@ const BONE_DEFS: BoneDef[] = [
 ];
 
 // ========================================================================
-// Fixed camera views
+// 固定カメラビュー定義
+// 正面・右・背面・左の4方向から、マーカーのドラッグ操作時に
+// どの軸が編集可能かを定義する
 // ========================================================================
 type ViewDirection = 'front' | 'right' | 'back' | 'left';
 
 interface ViewDef {
-  key: ViewDirection;
-  label: string;
-  alpha: number;
-  dragAxes: ('x' | 'y' | 'z')[];
-  axisLabels: string;
+  key: ViewDirection;              // ビュー方向の識別キー
+  label: string;                   // UI表示用ラベル（日本語）
+  alpha: number;                   // カメラの水平回転角度（ラジアン）
+  dragAxes: ('x' | 'y' | 'z')[];  // このビューでドラッグ編集可能な軸
+  axisLabels: string;              // 軸の説明テキスト
 }
 
+// 4方向のビュー定義
 const VIEW_DEFS: ViewDef[] = [
-  { key: 'front', label: '正面',  alpha: Math.PI / 2,     dragAxes: ['x', 'z'], axisLabels: 'X(左右) + Z(高さ)' },
-  { key: 'right', label: '右',    alpha: 0,               dragAxes: ['y', 'z'], axisLabels: 'Y(前後) + Z(高さ)' },
-  { key: 'back',  label: '背面',  alpha: Math.PI * 3 / 2, dragAxes: ['x', 'z'], axisLabels: 'X(左右) + Z(高さ)' },
-  { key: 'left',  label: '左',    alpha: Math.PI,         dragAxes: ['y', 'z'], axisLabels: 'Y(前後) + Z(高さ)' },
+  { key: 'front', label: '正面',  alpha: Math.PI / 2,     dragAxes: ['x', 'z'], axisLabels: 'X(左右) + Z(高さ)' },     // 正面: X(左右)とZ(高さ)を操作
+  { key: 'right', label: '右',    alpha: 0,               dragAxes: ['y', 'z'], axisLabels: 'Y(前後) + Z(高さ)' },     // 右側: Y(前後)とZ(高さ)を操作
+  { key: 'back',  label: '背面',  alpha: Math.PI * 3 / 2, dragAxes: ['x', 'z'], axisLabels: 'X(左右) + Z(高さ)' },     // 背面: X(左右)とZ(高さ)を操作
+  { key: 'left',  label: '左',    alpha: Math.PI,         dragAxes: ['y', 'z'], axisLabels: 'Y(前後) + Z(高さ)' },     // 左側: Y(前後)とZ(高さ)を操作
 ];
 
 // ========================================================================
-// Auto-calculation: markers → all 41 bones
+// 自動計算: 8マーカー → 全41ボーン位置
+// 顎、股間、左右手首、左右肘、左右膝の8点から
+// 体幹、腕、脚、指の全41ボーンの3D位置を導出する
 // ========================================================================
 function calculateAllBones(
   markers: MarkerData, bodyMaxZ: number,
@@ -220,7 +238,7 @@ function calculateAllBones(
   };
 }
 
-// Mirror a left-side marker using Chin/Groin center
+// 左側マーカーを顎/股間のX中心で反転して右側マーカーを生成する
 function mirrorMarker(leftPos: Vec3, mirrorCenterX: number): Vec3 {
   return { x: mirrorCenterX + (mirrorCenterX - leftPos.x), y: leftPos.y, z: leftPos.z };
 }
@@ -241,8 +259,10 @@ function getDefaultMarkers(centerX: number): MarkerData {
 }
 
 // ========================================================================
-// Helpers
+// ヘルパー関数群
 // ========================================================================
+
+// ライティングなしで頂点カラーをそのまま表示するシェーダーマテリアルを作成
 function createUnlitMaterial(scene: Scene, name: string): ShaderMaterial {
   Effect.ShadersStore[name + 'VertexShader'] = `
     precision highp float;
@@ -266,6 +286,8 @@ function createUnlitMaterial(scene: Scene, name: string): ShaderMaterial {
   return mat;
 }
 
+// ボディ全体のボクセルメッシュを構築する（非スケルタル、プレビュー用）
+// alpha: 透明度（0-1。モーションプレビュー時に半透明にする用）
 function buildBodyMesh(voxels: VoxelEntry[], scene: Scene, cx: number, cy: number, alpha: number): Mesh {
   const occupied = new Set<string>();
   for (const v of voxels) occupied.add(`${v.x},${v.y},${v.z}`);
@@ -301,6 +323,7 @@ function voxelToViewer(vx: number, vy: number, vz: number, cx: number, cy: numbe
   return new Vector3((vx - cx) * SCALE, vz * SCALE, -(vy - cy) * SCALE);
 }
 
+// ビューワー座標→ボクセル座標への逆変換（マーカードラッグ時に使用）
 function viewerToVoxel(viewerPos: Vector3, cx: number, cy: number): Vec3 {
   return {
     x: viewerPos.x / SCALE + cx,
@@ -309,14 +332,16 @@ function viewerToVoxel(viewerPos: Vector3, cx: number, cy: number): Vec3 {
   };
 }
 
+// 数値を小数第1位に丸める（UI表示用）
 function r1(n: number): number { return Math.round(n * 10) / 10; }
 
 // ========================================================================
-// Preview: 20-bone hierarchical skeletal animation
+// プレビュー: ボーン階層付きスケルタルアニメーション
+// 各ボクセルを最も近いボーンに割り当て、ボーンごとのメッシュを構築する
+// ボーンを回転させるとそのボーンに属するボクセル群が一緒に動く
 // ========================================================================
 
-// Assign each voxel to nearest bone (in voxel space)
-// Distance from point P to line segment AB (squared)
+// 点Pから線分ABまでの距離の二乗を計算する（ボクセル→ボーン割り当て用）
 function distToSegmentSq(px: number, py: number, pz: number,
   ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
   const abx = bx - ax, aby = by - ay, abz = bz - az;
@@ -331,6 +356,8 @@ function distToSegmentSq(px: number, py: number, pz: number,
   return cx * cx + cy * cy + cz * cz;
 }
 
+// 全ボクセルを最も近いボーンセグメントに割り当てる
+// 連結性チェック付き: 分離したクラスターは隣接ボーンに再割り当て
 function assignVoxelsToBones(
   voxels: VoxelEntry[],
   bones: Record<string, Vec3>,
@@ -475,11 +502,10 @@ function assignVoxelsToBones(
   return result;
 }
 
-// Seal bone partition cross-sections with sphere caps.
-// At each boundary, place a sphere at the midpoint. The sphere is split
-// into hemispheres: each bone gets the hemisphere on the OTHER side
-// (extending into the other bone's territory). Overlapping voxels from
-// the original bone at those positions are removed.
+// ボーン分割断面を球体キャップで封じる
+// 隣接する2つのボーンの境界中間点に球体を配置する
+// 球体は半球に分割: 各ボーンは相手側の領域に伸びる半球を取得する
+// これによりアニメーション時にボーン間の隙間が見えなくなる
 function addSphereCaps(
   boneVoxels: Record<string, VoxelEntry[]>,
 ): void {
@@ -609,7 +635,9 @@ function addSphereCaps(
   }
 }
 
-// Build mesh with vertices in bone-local space (offset baked into vertex data)
+// ボーンローカル座標系でボクセルメッシュを構築する
+// 頂点位置はボーン位置からの相対座標にベイクされる
+// これによりボーンのTransformNodeが回転するとメッシュも一緒に動く
 function buildBoneMeshLocal(
   voxels: VoxelEntry[], scene: Scene, name: string,
   cx: number, cy: number, bonePos: Vec3,
@@ -648,9 +676,10 @@ function buildBoneMeshLocal(
   return mesh;
 }
 
-// Build HIERARCHICAL TransformNode tree with bone-local vertex data.
-// Each node is positioned relative to its parent bone.
-// Animation converts world-space deltas → local deltas via parent inverse.
+// ボーン階層付きのTransformNodeツリーを構築する
+// 各ノードは親ボーンからの相対位置で配置される
+// アニメーション時: ワールド空間のデルタクォータニオンを親の逆で
+// ローカルデルタに変換して適用する
 function buildSkeletalPreview(
   voxels: VoxelEntry[], bones: Record<string, Vec3>,
   scene: Scene, cx: number, cy: number,
@@ -709,27 +738,29 @@ function buildSkeletalPreview(
 }
 
 // ========================================================================
-// FBX Motion data (loaded from .motion.json converted by scripts/convert-fbx-motion.mjs)
-// Per-bone WORLD-SPACE delta quaternion + delta position from rest pose
+// FBXモーションデータ
+// scripts/convert-fbx-motion.mjsで変換された.motion.jsonファイルから読み込む
+// 各ボーンのワールド空間デルタクォータニオン + デルタポジション
 // ========================================================================
 interface BoneFrameData {
-  dq: [number, number, number, number]; // delta quaternion xyzw (world space, Three.js coords)
-  dp?: [number, number, number];        // delta position xyz (world space, Three.js coords)
+  dq: [number, number, number, number]; // デルタクォータニオン [x,y,z,w]（ワールド空間、Three.js座標系）
+  dp?: [number, number, number];        // デルタポジション [x,y,z]（ワールド空間、Three.js座標系。Hipsのみ使用）
 }
 
+// モーションクリップ全体のデータ構造
 interface MotionClip {
-  name: string;
-  label: string;
-  duration: number;
-  fps: number;
-  frameCount: number;
-  fbxBodyHeight: number;    // FBX Hips→Head distance for scaling
-  outputBones: string[];
-  bindWorldPositions?: Record<string, [number, number, number]>; // FBX bind-pose world positions (Three.js coords)
-  frames: Record<string, BoneFrameData>[];
+  name: string;            // モーション識別名
+  label: string;           // UI表示用ラベル
+  duration: number;        // 再生時間（秒）
+  fps: number;             // フレームレート
+  frameCount: number;      // 総フレーム数
+  fbxBodyHeight: number;   // FBXのHips→Head距離（ボクセルモデルとのスケール合わせに使用）
+  outputBones: string[];   // 出力対象ボーン名リスト
+  bindWorldPositions?: Record<string, [number, number, number]>; // FBXバインドポーズのワールド座標
+  frames: Record<string, BoneFrameData>[]; // フレーム配列
 }
 
-// Available motion files under /models/character-motion/
+// 利用可能なモーションファイル一覧（/models/character-motion/ディレクトリ）
 const MOTION_FILES: { name: string; label: string; file: string }[] = [
   { name: 'hip_hop', label: 'Hip Hop Dancing', file: '/models/character-motion/Hip Hop Dancing.motion.json' },
   { name: 'belly_dance', label: 'Belly Dance', file: '/models/character-motion/Belly Dance.motion.json' },
@@ -740,13 +771,16 @@ const MOTION_FILES: { name: string; label: string; file: string }[] = [
   { name: 'snake_hip_hop', label: 'Snake Hip Hop', file: '/models/character-motion/Snake Hip Hop Dance.motion.json' },
 ];
 
+// 装備パーツの情報（髪、衣装等の追加ボクセルパーツ）
 interface EquipPart { key: string; file: string; default_on: boolean; voxels: number; }
 
+// ページモード: edit=マーカー編集, preview=モーションプレビュー
 type PageMode = 'edit' | 'preview';
 
-// Quaternion conversion from Three.js to viewer coordinate system.
-// Axis mapping: viewer = (-Three_x, Three_y, Three_z) = X-reflection
-// This is a reflection (det=-1) for right→left handedness change.
+// クォータニオン変換方式の定義
+// Three.js座標系（右手系）→ ビューワー座標系（左手系、Babylon.js）への変換
+// 軸マッピング: viewer = (-Three_x, Three_y, Three_z) = X反転
+// 反射変換（det=-1）で右手系→左手系に変換
 // q_viewer = (x, -y, -z, w) from q_three = (x, y, z, w)
 type QuatConversion = 'correct' | 'conv1' | 'conv2' | 'identity';
 const QUAT_CONVERSIONS: { key: QuatConversion; label: string; desc: string }[] = [
@@ -757,7 +791,10 @@ const QUAT_CONVERSIONS: { key: QuatConversion; label: string; desc: string }[] =
 ];
 
 // ========================================================================
-// Component
+// メインコンポーネント
+// ボクセルモデルのボーン設定・マーカー配置・モーションプレビューを行うページ
+// 左側パネル: マーカー/ボーン一覧、モーション選択
+// 右側: Babylon.jsの3Dビューワー（マーカードラッグ、モーション再生）
 // ========================================================================
 export default function BoneConfigPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
