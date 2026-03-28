@@ -9,8 +9,8 @@ import '@babylonjs/loaders/glTF';
 
 import type { CharacterConfig, BoneData, GridVoxel, ScaleSettings, PerBoneVoxels } from './constants';
 import { DEFAULT_SCALES } from './constants';
-import { voxelizeAllParts, buildVoxelMesh, buildBoneMap, generateBoneColors, applyBoneColors, assignVoxelsToBoneParts, computeAlignment } from './voxelize';
-import { voxelizeBodyModel, voxelizeMeshesPerBone } from './voxelize-model';
+import { voxelizeAllParts, buildVoxelMesh, buildBoneMap, generateBoneColors, applyBoneColors, assignVoxelsToBoneParts, computeAlignment } from '@/utils/voxelize/viewer';
+import { voxelizeBodyModel, voxelizeMeshesPerBone } from '@/utils/voxelize/viewer-model';
 import { setupBabylonScene } from '@/utils/babylon-setup';
 
 // ============================================================

@@ -1,9 +1,9 @@
 import {
   Vector3, Scene, Mesh, VertexData, ShaderMaterial, Effect, AbstractMesh,
 } from '@babylonjs/core';
-import type { GridVoxel, CharacterConfig, BodyCategory, ScaleSettings, AlignInfo, BoneEntry, PerBoneVoxels } from './constants';
-import { VOXEL_SIZE, MIN_RADIUS, SKIN_COLOR, BODY_COLOR, getCategory } from './constants';
-import { FACE_DIRS, FACE_VERTS, FACE_NORMALS } from '@/utils/voxel-core';
+import type { GridVoxel, CharacterConfig, BodyCategory, ScaleSettings, AlignInfo, BoneEntry, PerBoneVoxels } from '@/utils/character-viewer/constants';
+import { VOXEL_SIZE, MIN_RADIUS, SKIN_COLOR, BODY_COLOR, getCategory } from '@/utils/character-viewer/constants';
+import { FACE_DIRS, FACE_VERTS, FACE_NORMALS } from './core';
 
 // ============================================================
 // プリミティブ → ボクセル

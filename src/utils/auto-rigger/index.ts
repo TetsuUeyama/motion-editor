@@ -10,7 +10,7 @@ export type { MarkerGroup, PartCategory, DeformParams, SkeletalModelExport, Segm
 export { CATEGORY_INFO, PART_CATEGORIES, guessCategory, BODY_SIZE, VSCALE, TARGET_MARKERS, MARKER_GROUPS, ALL_MARKER_NAMES, getMarkerColor, MIRROR_PAIRS } from './constants';
 
 // Voxelization + bone calculation
-export { mergeVoxelLayers, worldToVoxel, piecewiseLinear, lerp3, uniformChibiVoxelize, calculateTargetBones } from './voxelize';
+export { mergeVoxelLayers, worldToVoxel, piecewiseLinear, lerp3, uniformChibiVoxelize, calculateTargetBones } from '@/utils/voxelize/chibi';
 
 // Small exports (mesh, vox, skeletal, segments)
 export { buildFlatVoxelMesh, exportVoxBlob, exportSkeletalModelJSON, exportSegmentsBundle, exportSegmentsInfo } from './exports';
@@ -26,7 +26,7 @@ export {
   voxelToViewer, threeQuatToViewer, distToSegSq,
   assignVoxelsToBones, addSphereCaps,
   createUnlitMaterial, buildSkeletalCharacter,
-} from '@/utils/voxel-core';
+} from '@/utils/voxelize/core';
 
 // Re-export loadMotionClip from voxel-skeleton (backward compat)
-export { loadMotionClipFromFile as loadMotionClip } from '@/utils/voxel-skeleton';
+export { loadMotionClipFromFile as loadMotionClip } from '@/utils/voxelize/skeleton';

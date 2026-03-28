@@ -7,9 +7,9 @@ import {
   Mesh, AbstractMesh, Vector3,
 } from '@babylonjs/core';
 
-import { clamp01, type VoxelEntry, type Vec3 } from '@/utils/voxel-core';
-import type { DeformParams } from './constants';
-import { BODY_SIZE } from './constants';
+import { clamp01, type VoxelEntry, type Vec3 } from './core';
+import type { DeformParams } from '@/utils/auto-rigger/constants';
+import { BODY_SIZE } from '@/utils/auto-rigger/constants';
 
 // ============================================================
 // Utility functions

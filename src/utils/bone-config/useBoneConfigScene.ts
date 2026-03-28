@@ -11,8 +11,8 @@ import type { Scene, ArcRotateCamera, Mesh, TransformNode } from '@babylonjs/cor
 // カメラビュー方向の型
 import type { ViewDirection } from '@/utils/bone-config/constants';
 // ボクセルデータの型
-import type { VoxelEntry } from '@/utils/vox-parser';
-import { mirrorMarker, type MarkerData } from '@/utils/voxel-skeleton';
+import type { VoxelEntry } from '@/utils/voxelize/parser';
+import { mirrorMarker, type MarkerData } from '@/utils/voxelize/skeleton';
 import { MARKER_DEFS, VIEW_DEFS, viewerToVoxel } from '@/utils/bone-config/constants';
 import { setupBabylonScene } from '@/utils/babylon-setup';
 

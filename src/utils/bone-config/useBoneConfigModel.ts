@@ -3,9 +3,9 @@
  * VOXファイル読み込み、装備パーツマニフェスト読み込み、保存済みボーン設定復元を担当する
  */
 import { useEffect } from 'react';
-import { loadVoxFile } from '@/utils/vox-parser';
-import type { VoxelEntry } from '@/utils/vox-parser';
-import { getDefaultMarkers, type MarkerData } from '@/utils/voxel-skeleton';
+import { loadVoxFile } from '@/utils/voxelize/parser';
+import type { VoxelEntry } from '@/utils/voxelize/parser';
+import { getDefaultMarkers, type MarkerData } from '@/utils/voxelize/skeleton';
 import type { ModelEntry } from '@/utils/model-registry';
 import { buildBodyMesh, type EquipPart } from '@/utils/bone-config/constants';
 import type { useBoneConfigRefs } from './useBoneConfigScene';

@@ -2,8 +2,8 @@
  * Skinned GLB Export (glTF 2.0 Binary)
  */
 
-import type { VoxelEntry, Vec3 } from '@/utils/voxel-core';
-import { BONE_DEFS, FACE_DIRS, FACE_VERTS, FACE_NORMALS, assignVoxelsToBones } from '@/utils/voxel-core';
+import type { VoxelEntry, Vec3 } from '@/utils/voxelize/core';
+import { BONE_DEFS, FACE_DIRS, FACE_VERTS, FACE_NORMALS, assignVoxelsToBones } from '@/utils/voxelize/core';
 import { BODY_SIZE, VSCALE } from './constants';
 
 export function exportSkinnedGLB(

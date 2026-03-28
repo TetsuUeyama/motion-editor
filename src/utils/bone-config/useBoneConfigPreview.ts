@@ -10,9 +10,9 @@ import {
   Vector3, TransformNode, Mesh,
   MeshBuilder, StandardMaterial, Color3,
 } from '@babylonjs/core';
-import { BONE_DEFS, type Vec3, type MarkerData, voxelToViewer } from '@/utils/voxel-skeleton';
-import { loadVoxFile, SCALE } from '@/utils/vox-parser';
-import type { VoxelEntry } from '@/utils/vox-parser';
+import { BONE_DEFS, type Vec3, type MarkerData, voxelToViewer } from '@/utils/voxelize/skeleton';
+import { loadVoxFile, SCALE } from '@/utils/voxelize/parser';
+import type { VoxelEntry } from '@/utils/voxelize/parser';
 import { MARKER_DEFS, type MarkerDef, type EquipPart, type ViewDirection } from '@/utils/bone-config/constants';
 import type { BoneConfigRefs } from './useBoneConfigScene';
 

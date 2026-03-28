@@ -1,7 +1,7 @@
 'use client';
 
 import { MOTION_FILES, QUAT_CONVERSIONS, type QuatConversion, type EquipPart } from '@/utils/bone-config/constants';
-import type { MotionClip } from '@/utils/voxel-skeleton';
+import type { MotionClip } from '@/utils/voxelize/skeleton';
 
 // ============================================================
 // MotionPanel

@@ -1,13 +1,13 @@
 import { useEffect, useCallback } from 'react';
-import type { MarkerData, Vec3 } from '@/utils/voxel-skeleton';
-import { calculateAllBones, mirrorMarker, getDefaultMarkers } from '@/utils/voxel-skeleton';
+import type { MarkerData, Vec3 } from '@/utils/voxelize/skeleton';
+import { calculateAllBones, mirrorMarker, getDefaultMarkers } from '@/utils/voxelize/skeleton';
 import { MARKER_DEFS, type MarkerDef, VIEW_DEFS, type ViewDirection } from '@/utils/bone-config/constants';
 import type { BoneConfigRefs } from './useBoneConfigScene';
 import type { ModelEntry } from '@/utils/model-registry';
-import type { VoxelEntry } from '@/utils/voxel-core';
-import { buildSkeletalCharacter } from '@/utils/voxel-skeleton';
+import type { VoxelEntry } from '@/utils/voxelize/core';
+import { buildSkeletalCharacter } from '@/utils/voxelize/skeleton';
 import type { PageMode } from '@/utils/bone-config/constants';
-import type { MotionClip } from '@/utils/voxel-core';
+import type { MotionClip } from '@/utils/voxelize/core';
 
 // ============================================================
 // useBoneConfigMarkers

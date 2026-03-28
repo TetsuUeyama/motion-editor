@@ -1,7 +1,7 @@
 'use client';
 
-import { BONE_DEFS, getBoneDepth } from '@/utils/voxel-skeleton';
-import type { Vec3 } from '@/utils/voxel-skeleton';
+import { BONE_DEFS, getBoneDepth } from '@/utils/voxelize/skeleton';
+import type { Vec3 } from '@/utils/voxelize/skeleton';
 import type { Mesh } from '@babylonjs/core';
 import { r1 } from '@/utils/bone-config/constants';
 

@@ -3,8 +3,8 @@
  */
 
 import { Scene, Mesh, VertexData } from '@babylonjs/core';
-import type { VoxelEntry, Vec3 } from '@/utils/voxel-core';
-import { BONE_DEFS, FACE_DIRS, FACE_VERTS, FACE_NORMALS, createUnlitMaterial, assignVoxelsToBones } from '@/utils/voxel-core';
+import type { VoxelEntry, Vec3 } from '@/utils/voxelize/core';
+import { BONE_DEFS, FACE_DIRS, FACE_VERTS, FACE_NORMALS, createUnlitMaterial, assignVoxelsToBones } from '@/utils/voxelize/core';
 import type { SkeletalModelExport, SegmentBundleExport, SegmentsInfoExport } from './constants';
 import { BODY_SIZE, VSCALE } from './constants';
 

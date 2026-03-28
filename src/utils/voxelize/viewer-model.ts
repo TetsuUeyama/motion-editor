@@ -2,10 +2,10 @@ import {
   Scene, Vector3, Mesh, AbstractMesh, SceneLoader,
 } from '@babylonjs/core';
 import '@babylonjs/loaders/glTF';
-import type { GridVoxel, PerBoneVoxels, AlignInfo } from './constants';
-import { VOXEL_SIZE } from './constants';
-import { clamp01 } from '@/utils/voxel-core';
-import { generateBoneColors, computeAlignment } from './voxelize';
+import type { GridVoxel, PerBoneVoxels, AlignInfo } from '@/utils/character-viewer/constants';
+import { VOXEL_SIZE } from '@/utils/character-viewer/constants';
+import { clamp01 } from './core';
+import { generateBoneColors, computeAlignment } from './viewer';
 
 /** 3Dモデル全体をボクセル化（骨格にアラインメント、テクスチャカラー付き） */
 export async function voxelizeBodyModel(

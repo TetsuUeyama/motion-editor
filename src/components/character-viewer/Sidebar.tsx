@@ -3,7 +3,7 @@
 import { useRef } from 'react';
 import type { ScaleSettings, BodyCategory } from '@/utils/character-viewer/constants';
 import { VOXEL_SIZE, CATEGORY_LABELS, DEFAULT_SCALES } from '@/utils/character-viewer/constants';
-import { generateBoneColors } from '@/utils/character-viewer/voxelize';
+import { generateBoneColors } from '@/utils/voxelize/viewer';
 
 // ============================================================
 // ScaleSlider (inlined)

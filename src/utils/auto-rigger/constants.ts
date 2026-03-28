@@ -2,7 +2,7 @@
  * auto-rigger type definitions, constants and classification helpers
  */
 
-import type { Vec3 } from '@/utils/voxel-core';
+import type { Vec3 } from '@/utils/voxelize/core';
 
 // ============================================================
 // Type definitions
@@ -83,7 +83,7 @@ export function guessCategory(meshName: string): PartCategory {
 
 export const BODY_SIZE = { x: 85, y: 34, z: 102 };
 // VSCALE は voxel-core.ts の VOXEL_SCALE からエイリアス (後方互換)
-export { VOXEL_SCALE as VSCALE } from '@/utils/voxel-core';
+export { VOXEL_SCALE as VSCALE } from '@/utils/voxelize/core';
 
 export const TARGET_MARKERS: Record<string, Vec3> = {
   Chin:       { x: 42.5, y: 17, z: 81 },

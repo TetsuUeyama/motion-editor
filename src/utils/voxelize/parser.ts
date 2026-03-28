@@ -1,8 +1,8 @@
 // MagicaVoxel (.vox) ファイルのパーサーと関連型定義
 
 // VoxelEntry は voxel-core.ts で定義されている唯一の情報源からre-export
-export type { VoxelEntry } from '@/utils/voxel-core';
-import type { VoxelEntry } from '@/utils/voxel-core';
+export type { VoxelEntry } from './core';
+import type { VoxelEntry } from './core';
 
 // VOXファイルをパースした結果のモデルデータ
 export interface VoxModel {
@@ -97,5 +97,5 @@ export async function loadVoxFile(url: string): Promise<{ model: VoxModel; voxel
 // ボクセルメッシュ構築用の定数群
 
 // SCALE は voxel-core.ts の VOXEL_SCALE からエイリアス (後方互換)
-export { VOXEL_SCALE as SCALE } from '@/utils/voxel-core';
+export { VOXEL_SCALE as SCALE } from './core';
 

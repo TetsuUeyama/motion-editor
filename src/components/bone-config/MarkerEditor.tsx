@@ -2,7 +2,7 @@
 
 import type { MarkerDef, ViewDef } from '@/utils/bone-config/constants';
 import { r1 } from '@/utils/bone-config/constants';
-import type { MarkerData, Vec3 } from '@/utils/voxel-skeleton';
+import type { MarkerData, Vec3 } from '@/utils/voxelize/skeleton';
 
 interface MarkerEditorProps {
   selectedMarker: string;
