@@ -25,7 +25,7 @@ import '@babylonjs/loaders/glTF';
 import {
   BODY_SIZE, VSCALE, MARKER_GROUPS, ALL_MARKER_NAMES, MIRROR_PAIRS,
   getMarkerColor, BONE_DEFS,
-  CATEGORY_INFO, PART_CATEGORIES, mergeVoxelLayers, guessCategory,
+  CATEGORY_INFO, PART_CATEGORIES, guessCategory,
   calculateTargetBones, uniformChibiVoxelize, buildSkeletalCharacter,
   exportVoxBlob, exportSkeletalModelJSON, exportSkinnedGLB,
   exportSegmentsBundle, exportSegmentsInfo,
@@ -196,26 +196,26 @@ export default function ModelImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  // Parts state
-  const [parts, setParts] = useState<Record<string, PartConfig>>({});
-  const [selectedPart, setSelectedPart] = useState<string | null>(null);
+  // パーツ分類状態（Step 2用）
+  const [parts, setParts] = useState<Record<string, PartConfig>>({});       // メッシュ名→パーツ設定
+  const [selectedPart, setSelectedPart] = useState<string | null>(null);    // 選択中のパーツ名
 
-  // Marker state
-  const [markers, setMarkers] = useState<Record<string, Vector3>>({});
-  const [activeMarker, setActiveMarker] = useState<string | null>(null);
-  const [useSymmetry, setUseSymmetry] = useState(true);
-  const [modelCenter, setModelCenter] = useState<Vector3>(Vector3.Zero());
+  // マーカー状態（Step 3用）
+  const [markers, setMarkers] = useState<Record<string, Vector3>>({});      // マーカー名→ワールド座標
+  const [activeMarker, setActiveMarker] = useState<string | null>(null);    // 配置中のマーカー名
+  const [useSymmetry, setUseSymmetry] = useState(true);                     // 左右対称ミラー有効
+  const [modelCenter, setModelCenter] = useState<Vector3>(Vector3.Zero());  // モデルのバウンディングボックス中心
 
-  // Result state
-  const [generating, setGenerating] = useState(false);
-  const [genStatus, setGenStatus] = useState('');
-  const [bodyVoxels, setBodyVoxels] = useState<VoxelEntry[]>([]);
-  const [otherPartVoxels, setOtherPartVoxels] = useState<Record<string, VoxelEntry[]>>({});
-  const [playingMotion, setPlayingMotion] = useState<string | null>(null);
-  const [loadingMotion, setLoadingMotion] = useState(false);
+  // 結果状態（Step 4用）
+  const [generating, setGenerating] = useState(false);                           // ボクセル化処理中フラグ
+  const [genStatus, setGenStatus] = useState('');                                // ボクセル化の進捗メッセージ
+  const [bodyVoxels, setBodyVoxels] = useState<VoxelEntry[]>([]);                // 生成されたボディボクセルデータ
+  const [otherPartVoxels, setOtherPartVoxels] = useState<Record<string, VoxelEntry[]>>({}); // ボディ以外のパーツボクセル
+  const [playingMotion, setPlayingMotion] = useState<string | null>(null);       // 再生中のモーション名
+  const [loadingMotion, setLoadingMotion] = useState(false);                     // モーション読み込み中フラグ
 
   // ============================================================
-  // Init Babylon.js
+  // Babylon.jsエンジン初期化（マウント時に1回だけ実行）
   // ============================================================
   useEffect(() => {
     const canvas = canvasRef.current;

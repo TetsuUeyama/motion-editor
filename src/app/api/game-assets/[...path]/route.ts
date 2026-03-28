@@ -23,6 +23,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.vox': 'application/octet-stream',   // MagicaVoxelボクセルファイル（バイナリ）
   '.json': 'application/json',           // JSONファイル（モーションクリップ等）
   '.fbx': 'application/octet-stream',    // FBX 3Dモデルファイル（バイナリ）
+  '.glb': 'model/gltf-binary',           // GLB 3Dモデルファイル（バイナリ）
 };
 
 // GETリクエストを処理するハンドラ関数

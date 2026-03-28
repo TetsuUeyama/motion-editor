@@ -1,794 +1,40 @@
-// クライアントコンポーネント宣言（ブラウザ側で実行）
+// クライアントコンポーネント宣言
 'use client';
-
-// Reactのフック群をインポート
-import { useEffect, useRef, useState, useCallback } from 'react';
-// Next.jsのページ遷移用Linkコンポーネント
+// Reactフック
+import { useEffect, useState, useCallback } from 'react';
+// Next.jsページ遷移
 import Link from 'next/link';
-// Babylon.jsのコアモジュール（3Dレンダリングエンジン）
+// Babylon.jsコアモジュール
 import {
   Engine, Scene, ArcRotateCamera, HemisphericLight,
-  Vector3, Color4, Mesh, VertexData, ShaderMaterial, Effect,
+  Vector3, Color4,
   MeshBuilder, StandardMaterial, Color3, Plane, PointerEventTypes,
-  TransformNode, Quaternion,
+  Quaternion,
 } from '@babylonjs/core';
-// VOXファイルの読み込みとメッシュ構築用の定数
-import { loadVoxFile, SCALE, FACE_DIRS, FACE_VERTS, FACE_NORMALS } from '@/lib/vox-parser';
+// VOXファイル読み込み
+import { loadVoxFile, SCALE } from '@/lib/vox-parser';
 import type { VoxelEntry } from '@/lib/vox-parser';
-// モデルレジストリ（利用可能なボクセルモデルの一覧）
+// モデル一覧
 import { MODEL_REGISTRY, DEFAULT_MODEL_ID } from '@/lib/model-registry';
 import type { ModelEntry } from '@/lib/model-registry';
-
-// ========================================================================
-// マーカー定義
-// ユーザーがボクセルモデル上に配置する解剖学的マーカー（顎、手首、肘、膝、股間）
-// これらのマーカー位置から全41ボーンの位置を自動計算する
-// ========================================================================
-interface MarkerDef {
-  name: string;       // マーカーの識別名（例: "Chin", "LeftWrist"）
-  label: string;      // UI表示用ラベル（日本語併記）
-  color: string;      // マーカー球体の色（16進カラーコード）
-  side: 'center' | 'left' | 'right'; // center=中央（単体）, left/right=左右対称ペア
-  mirrorOf?: string;  // right側マーカーのみ: ミラー元のleft側マーカー名
-}
-
-// 8つのマーカー定義（中央2つ + 左3つ + 右3つ）
-// 左右対称モード時は左側のみ配置し、右側は自動ミラーされる
-const MARKER_DEFS: MarkerDef[] = [
-  { name: 'Chin',        label: 'Chin (顎)',          color: '#ffee44', side: 'center' },  // 顎（頭部の基準点）
-  { name: 'Groin',       label: 'Groin (股間)',        color: '#ff4444', side: 'center' },  // 股間（体幹と脚の分岐点）
-  { name: 'LeftWrist',   label: 'L.Wrist (左手首)',    color: '#4444ff', side: 'left' },    // 左手首
-  { name: 'LeftElbow',   label: 'L.Elbow (左肘)',      color: '#4488ff', side: 'left' },    // 左肘
-  { name: 'LeftKnee',    label: 'L.Knee (左膝)',       color: '#44ff66', side: 'left' },    // 左膝
-  { name: 'RightWrist',  label: 'R.Wrist (右手首)',    color: '#ff4466', side: 'right', mirrorOf: 'LeftWrist' },  // 右手首（左手首のミラー）
-  { name: 'RightElbow',  label: 'R.Elbow (右肘)',      color: '#ff4488', side: 'right', mirrorOf: 'LeftElbow' },  // 右肘（左肘のミラー）
-  { name: 'RightKnee',   label: 'R.Knee (右膝)',       color: '#88ff44', side: 'right', mirrorOf: 'LeftKnee' },   // 右膝（左膝のミラー）
-];
-
-// 3次元座標を表す型
-interface Vec3 { x: number; y: number; z: number; }
-// マーカー名→座標のマップ型
-type MarkerData = Record<string, Vec3>;
-
-// ========================================================================
-// ボーン定義（Mixamo標準41ボーン）
-// ボーンの階層構造、UI表示名、色を定義する
-// ========================================================================
-interface BoneDef {
-  name: string;          // ボーン名（Mixamo標準名）
-  label: string;         // UI表示用ラベル
-  parent: string | null; // 親ボーン名（ルートはnull）
-  color: string;         // UI表示用の色
-}
-
-const BONE_DEFS: BoneDef[] = [
-  // Center chain
-  { name: 'Hips',           label: 'Hips',           parent: null,             color: '#ff4444' },
-  { name: 'Spine',          label: 'Spine',          parent: 'Hips',           color: '#ff6644' },
-  { name: 'Spine1',         label: 'Spine1',         parent: 'Spine',          color: '#ff8844' },
-  { name: 'Spine2',         label: 'Spine2',         parent: 'Spine1',         color: '#ffaa44' },
-  { name: 'Neck',           label: 'Neck',           parent: 'Spine2',         color: '#ffcc44' },
-  { name: 'Head',           label: 'Head',           parent: 'Neck',           color: '#ffee44' },
-  // HeadTop_End removed — leaf bone not needed for motion, voxels assigned to Head instead
-  // Left arm chain
-  { name: 'LeftShoulder',   label: 'L.Shoulder',     parent: 'Spine2',         color: '#44aaff' },
-  { name: 'LeftArm',        label: 'L.Arm',          parent: 'LeftShoulder',   color: '#4488ff' },
-  { name: 'LeftForeArm',    label: 'L.ForeArm',      parent: 'LeftArm',        color: '#4466ff' },
-  { name: 'LeftHand',       label: 'L.Hand',         parent: 'LeftForeArm',    color: '#4444ff' },
-  // Left hand fingers
-  { name: 'LeftHandThumb1', label: 'L.Thumb1',       parent: 'LeftHand',       color: '#5555ff' },
-  { name: 'LeftHandThumb2', label: 'L.Thumb2',       parent: 'LeftHandThumb1', color: '#5555ee' },
-  { name: 'LeftHandThumb3', label: 'L.Thumb3',       parent: 'LeftHandThumb2', color: '#5555dd' },
-  { name: 'LeftHandThumb4', label: 'L.Thumb4',       parent: 'LeftHandThumb3', color: '#5555cc' },
-  { name: 'LeftHandIndex1', label: 'L.Index1',       parent: 'LeftHand',       color: '#6666ff' },
-  { name: 'LeftHandIndex2', label: 'L.Index2',       parent: 'LeftHandIndex1', color: '#6666ee' },
-  { name: 'LeftHandIndex3', label: 'L.Index3',       parent: 'LeftHandIndex2', color: '#6666dd' },
-  { name: 'LeftHandIndex4', label: 'L.Index4',       parent: 'LeftHandIndex3', color: '#6666cc' },
-  // Right arm chain
-  { name: 'RightShoulder',  label: 'R.Shoulder',     parent: 'Spine2',         color: '#ff44aa' },
-  { name: 'RightArm',       label: 'R.Arm',          parent: 'RightShoulder',  color: '#ff4488' },
-  { name: 'RightForeArm',   label: 'R.ForeArm',      parent: 'RightArm',       color: '#ff4466' },
-  { name: 'RightHand',      label: 'R.Hand',         parent: 'RightForeArm',   color: '#ff4444' },
-  // Right hand fingers
-  { name: 'RightHandThumb1',label: 'R.Thumb1',       parent: 'RightHand',      color: '#ff5555' },
-  { name: 'RightHandThumb2',label: 'R.Thumb2',       parent: 'RightHandThumb1',color: '#ee5555' },
-  { name: 'RightHandThumb3',label: 'R.Thumb3',       parent: 'RightHandThumb2',color: '#dd5555' },
-  { name: 'RightHandThumb4',label: 'R.Thumb4',       parent: 'RightHandThumb3',color: '#cc5555' },
-  { name: 'RightHandIndex1',label: 'R.Index1',       parent: 'RightHand',      color: '#ff6666' },
-  { name: 'RightHandIndex2',label: 'R.Index2',       parent: 'RightHandIndex1',color: '#ee6666' },
-  { name: 'RightHandIndex3',label: 'R.Index3',       parent: 'RightHandIndex2',color: '#dd6666' },
-  { name: 'RightHandIndex4',label: 'R.Index4',       parent: 'RightHandIndex3',color: '#cc6666' },
-  // Left leg chain
-  { name: 'LeftUpLeg',      label: 'L.UpLeg',        parent: 'Hips',           color: '#44ff88' },
-  { name: 'LeftLeg',        label: 'L.Leg',          parent: 'LeftUpLeg',      color: '#44ff66' },
-  { name: 'LeftFoot',       label: 'L.Foot',         parent: 'LeftLeg',        color: '#44ff44' },
-  { name: 'LeftToeBase',    label: 'L.ToeBase',      parent: 'LeftFoot',       color: '#44ee44' },
-  { name: 'LeftToe_End',    label: 'L.ToeEnd',       parent: 'LeftToeBase',    color: '#44dd44' },
-  // Right leg chain
-  { name: 'RightUpLeg',     label: 'R.UpLeg',        parent: 'Hips',           color: '#aaff44' },
-  { name: 'RightLeg',       label: 'R.Leg',          parent: 'RightUpLeg',     color: '#88ff44' },
-  { name: 'RightFoot',      label: 'R.Foot',         parent: 'RightLeg',       color: '#66ff44' },
-  { name: 'RightToeBase',   label: 'R.ToeBase',      parent: 'RightFoot',      color: '#55ee44' },
-  { name: 'RightToe_End',   label: 'R.ToeEnd',       parent: 'RightToeBase',   color: '#55dd44' },
-];
-
-// ========================================================================
-// 固定カメラビュー定義
-// 正面・右・背面・左の4方向から、マーカーのドラッグ操作時に
-// どの軸が編集可能かを定義する
-// ========================================================================
-type ViewDirection = 'front' | 'right' | 'back' | 'left';
-
-interface ViewDef {
-  key: ViewDirection;              // ビュー方向の識別キー
-  label: string;                   // UI表示用ラベル（日本語）
-  alpha: number;                   // カメラの水平回転角度（ラジアン）
-  dragAxes: ('x' | 'y' | 'z')[];  // このビューでドラッグ編集可能な軸
-  axisLabels: string;              // 軸の説明テキスト
-}
-
-// 4方向のビュー定義
-const VIEW_DEFS: ViewDef[] = [
-  { key: 'front', label: '正面',  alpha: Math.PI / 2,     dragAxes: ['x', 'z'], axisLabels: 'X(左右) + Z(高さ)' },     // 正面: X(左右)とZ(高さ)を操作
-  { key: 'right', label: '右',    alpha: 0,               dragAxes: ['y', 'z'], axisLabels: 'Y(前後) + Z(高さ)' },     // 右側: Y(前後)とZ(高さ)を操作
-  { key: 'back',  label: '背面',  alpha: Math.PI * 3 / 2, dragAxes: ['x', 'z'], axisLabels: 'X(左右) + Z(高さ)' },     // 背面: X(左右)とZ(高さ)を操作
-  { key: 'left',  label: '左',    alpha: Math.PI,         dragAxes: ['y', 'z'], axisLabels: 'Y(前後) + Z(高さ)' },     // 左側: Y(前後)とZ(高さ)を操作
-];
-
-// ========================================================================
-// 自動計算: 8マーカー → 全41ボーン位置
-// 顎、股間、左右手首、左右肘、左右膝の8点から
-// 体幹、腕、脚、指の全41ボーンの3D位置を導出する
-// ========================================================================
-function calculateAllBones(
-  markers: MarkerData, bodyMaxZ: number,
-): Record<string, Vec3> {
-  const chin = markers['Chin'];
-  const groin = markers['Groin'];
-  const lWrist = markers['LeftWrist'];
-  const lElbow = markers['LeftElbow'];
-  const lKnee = markers['LeftKnee'];
-  const rWrist = markers['RightWrist'];
-  const rElbow = markers['RightElbow'];
-  const rKnee = markers['RightKnee'];
-
-  const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => ({
-    x: a.x + (b.x - a.x) * t,
-    y: a.y + (b.y - a.y) * t,
-    z: a.z + (b.z - a.z) * t,
-  });
-
-  // Center chain
-  const hips: Vec3 = { x: groin.x, y: groin.y, z: groin.z };
-  const neck: Vec3 = { x: chin.x, y: chin.y, z: chin.z - 4 };
-  const head: Vec3 = { x: chin.x, y: chin.y, z: Math.min(chin.z + 8, bodyMaxZ) };
-
-
-  const spine  = lerp3(hips, neck, 0.25);
-  const spine1 = lerp3(hips, neck, 0.50);
-  const spine2 = lerp3(hips, neck, 0.75);
-
-  // Left arm
-  const lShoulderOffset = (lElbow.x - spine2.x) * 0.35;
-  const lShoulder: Vec3 = { x: spine2.x + lShoulderOffset, y: spine2.y, z: spine2.z + 2 };
-  const lArm = lerp3(lShoulder, lElbow, 0.3);
-  const lForeArm: Vec3 = { ...lElbow };
-  const lHand: Vec3 = { ...lWrist };
-
-  // Left hand fingers (small offsets from hand position)
-  const lFingerDir = { x: lHand.x - lForeArm.x, y: lHand.y - lForeArm.y, z: lHand.z - lForeArm.z };
-  const lFingerLen = Math.sqrt(lFingerDir.x * lFingerDir.x + lFingerDir.y * lFingerDir.y + lFingerDir.z * lFingerDir.z) || 1;
-  const lFD = { x: lFingerDir.x / lFingerLen, y: lFingerDir.y / lFingerLen, z: lFingerDir.z / lFingerLen };
-  const lThumb1: Vec3 = { x: lHand.x + lFD.x * 1, y: lHand.y + lFD.y * 1, z: lHand.z + lFD.z * 1 };
-  const lThumb2: Vec3 = { x: lThumb1.x + lFD.x * 0.8, y: lThumb1.y + lFD.y * 0.8, z: lThumb1.z + lFD.z * 0.8 };
-  const lThumb3: Vec3 = { x: lThumb2.x + lFD.x * 0.7, y: lThumb2.y + lFD.y * 0.7, z: lThumb2.z + lFD.z * 0.7 };
-  const lThumb4: Vec3 = { x: lThumb3.x + lFD.x * 0.5, y: lThumb3.y + lFD.y * 0.5, z: lThumb3.z + lFD.z * 0.5 };
-  const lIndex1: Vec3 = { x: lHand.x + lFD.x * 1.5, y: lHand.y + lFD.y * 1.5, z: lHand.z + lFD.z * 1.5 };
-  const lIndex2: Vec3 = { x: lIndex1.x + lFD.x * 1, y: lIndex1.y + lFD.y * 1, z: lIndex1.z + lFD.z * 1 };
-  const lIndex3: Vec3 = { x: lIndex2.x + lFD.x * 0.8, y: lIndex2.y + lFD.y * 0.8, z: lIndex2.z + lFD.z * 0.8 };
-  const lIndex4: Vec3 = { x: lIndex3.x + lFD.x * 0.7, y: lIndex3.y + lFD.y * 0.7, z: lIndex3.z + lFD.z * 0.7 };
-
-  // Right arm (independent)
-  const rShoulderOffset = (rElbow.x - spine2.x) * 0.35;
-  const rShoulder: Vec3 = { x: spine2.x + rShoulderOffset, y: spine2.y, z: spine2.z + 2 };
-  const rArm = lerp3(rShoulder, rElbow, 0.3);
-  const rForeArm: Vec3 = { ...rElbow };
-  const rHand: Vec3 = { ...rWrist };
-
-  // Right hand fingers
-  const rFingerDir = { x: rHand.x - rForeArm.x, y: rHand.y - rForeArm.y, z: rHand.z - rForeArm.z };
-  const rFingerLen = Math.sqrt(rFingerDir.x * rFingerDir.x + rFingerDir.y * rFingerDir.y + rFingerDir.z * rFingerDir.z) || 1;
-  const rFD = { x: rFingerDir.x / rFingerLen, y: rFingerDir.y / rFingerLen, z: rFingerDir.z / rFingerLen };
-  const rThumb1: Vec3 = { x: rHand.x + rFD.x * 1, y: rHand.y + rFD.y * 1, z: rHand.z + rFD.z * 1 };
-  const rThumb2: Vec3 = { x: rThumb1.x + rFD.x * 0.8, y: rThumb1.y + rFD.y * 0.8, z: rThumb1.z + rFD.z * 0.8 };
-  const rThumb3: Vec3 = { x: rThumb2.x + rFD.x * 0.7, y: rThumb2.y + rFD.y * 0.7, z: rThumb2.z + rFD.z * 0.7 };
-  const rThumb4: Vec3 = { x: rThumb3.x + rFD.x * 0.5, y: rThumb3.y + rFD.y * 0.5, z: rThumb3.z + rFD.z * 0.5 };
-  const rIndex1: Vec3 = { x: rHand.x + rFD.x * 1.5, y: rHand.y + rFD.y * 1.5, z: rHand.z + rFD.z * 1.5 };
-  const rIndex2: Vec3 = { x: rIndex1.x + rFD.x * 1, y: rIndex1.y + rFD.y * 1, z: rIndex1.z + rFD.z * 1 };
-  const rIndex3: Vec3 = { x: rIndex2.x + rFD.x * 0.8, y: rIndex2.y + rFD.y * 0.8, z: rIndex2.z + rFD.z * 0.8 };
-  const rIndex4: Vec3 = { x: rIndex3.x + rFD.x * 0.7, y: rIndex3.y + rFD.y * 0.7, z: rIndex3.z + rFD.z * 0.7 };
-
-  // Left leg
-  const lLegOffsetX = (lKnee.x - groin.x) * 0.8;
-  const lUpLeg: Vec3 = { x: groin.x + lLegOffsetX, y: groin.y, z: groin.z };
-  const lLeg: Vec3 = { ...lKnee };
-  const lFoot: Vec3 = { x: lKnee.x, y: Math.max(lKnee.y - 4, 0), z: 2 };
-  const lToeBase: Vec3 = { x: lFoot.x, y: Math.max(lFoot.y - 3, 0), z: 1 };
-  const lToeEnd: Vec3 = { x: lToeBase.x, y: Math.max(lToeBase.y - 2, 0), z: 0 };
-
-  // Right leg (independent)
-  const rLegOffsetX = (rKnee.x - groin.x) * 0.8;
-  const rUpLeg: Vec3 = { x: groin.x + rLegOffsetX, y: groin.y, z: groin.z };
-  const rLeg: Vec3 = { ...rKnee };
-  const rFoot: Vec3 = { x: rKnee.x, y: Math.max(rKnee.y - 4, 0), z: 2 };
-  const rToeBase: Vec3 = { x: rFoot.x, y: Math.max(rFoot.y - 3, 0), z: 1 };
-  const rToeEnd: Vec3 = { x: rToeBase.x, y: Math.max(rToeBase.y - 2, 0), z: 0 };
-
-  return {
-    Hips: hips, Spine: spine, Spine1: spine1, Spine2: spine2,
-    Neck: neck, Head: head,
-    LeftShoulder: lShoulder, LeftArm: lArm, LeftForeArm: lForeArm, LeftHand: lHand,
-    LeftHandThumb1: lThumb1, LeftHandThumb2: lThumb2, LeftHandThumb3: lThumb3, LeftHandThumb4: lThumb4,
-    LeftHandIndex1: lIndex1, LeftHandIndex2: lIndex2, LeftHandIndex3: lIndex3, LeftHandIndex4: lIndex4,
-    RightShoulder: rShoulder, RightArm: rArm, RightForeArm: rForeArm, RightHand: rHand,
-    RightHandThumb1: rThumb1, RightHandThumb2: rThumb2, RightHandThumb3: rThumb3, RightHandThumb4: rThumb4,
-    RightHandIndex1: rIndex1, RightHandIndex2: rIndex2, RightHandIndex3: rIndex3, RightHandIndex4: rIndex4,
-    LeftUpLeg: lUpLeg, LeftLeg: lLeg, LeftFoot: lFoot, LeftToeBase: lToeBase, LeftToe_End: lToeEnd,
-    RightUpLeg: rUpLeg, RightLeg: rLeg, RightFoot: rFoot, RightToeBase: rToeBase, RightToe_End: rToeEnd,
-  };
-}
-
-// 左側マーカーを顎/股間のX中心で反転して右側マーカーを生成する
-function mirrorMarker(leftPos: Vec3, mirrorCenterX: number): Vec3 {
-  return { x: mirrorCenterX + (mirrorCenterX - leftPos.x), y: leftPos.y, z: leftPos.z };
-}
-
-function getDefaultMarkers(centerX: number): MarkerData {
-  const left: MarkerData = {
-    Chin:       { x: 42.5, y: 13, z: 82 },
-    Groin:      { x: 41, y: 13, z: 47.5 },
-    LeftWrist:  { x: 9, y: 13, z: 63.5 },
-    LeftElbow:  { x: 23, y: 13, z: 70 },
-    LeftKnee:   { x: 32.5, y: 15.5, z: 27.5 },
-  };
-  // Default right = mirrored from left
-  left['RightWrist'] = mirrorMarker(left['LeftWrist'], centerX);
-  left['RightElbow'] = mirrorMarker(left['LeftElbow'], centerX);
-  left['RightKnee']  = mirrorMarker(left['LeftKnee'], centerX);
-  return left;
-}
-
-// ========================================================================
-// ヘルパー関数群
-// ========================================================================
-
-// ライティングなしで頂点カラーをそのまま表示するシェーダーマテリアルを作成
-function createUnlitMaterial(scene: Scene, name: string): ShaderMaterial {
-  Effect.ShadersStore[name + 'VertexShader'] = `
-    precision highp float;
-    attribute vec3 position;
-    attribute vec4 color;
-    uniform mat4 worldViewProjection;
-    varying vec4 vColor;
-    void main() { gl_Position = worldViewProjection * vec4(position, 1.0); vColor = color; }
-  `;
-  Effect.ShadersStore[name + 'FragmentShader'] = `
-    precision highp float;
-    varying vec4 vColor;
-    void main() { gl_FragColor = vColor; }
-  `;
-  const mat = new ShaderMaterial(name, scene, { vertex: name, fragment: name }, {
-    attributes: ['position', 'color'], uniforms: ['worldViewProjection'],
-    needAlphaBlending: false,
-  });
-  mat.backFaceCulling = false;
-  mat.forceDepthWrite = true;
-  return mat;
-}
-
-// ボディ全体のボクセルメッシュを構築する（非スケルタル、プレビュー用）
-// alpha: 透明度（0-1。モーションプレビュー時に半透明にする用）
-function buildBodyMesh(voxels: VoxelEntry[], scene: Scene, cx: number, cy: number, alpha: number): Mesh {
-  const occupied = new Set<string>();
-  for (const v of voxels) occupied.add(`${v.x},${v.y},${v.z}`);
-  const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
-  for (const voxel of voxels) {
-    for (let f = 0; f < 6; f++) {
-      const [dx, dy, dz] = FACE_DIRS[f];
-      if (occupied.has(`${voxel.x + dx},${voxel.y + dy},${voxel.z + dz}`)) continue;
-      const bi = positions.length / 3;
-      const fv = FACE_VERTS[f], fn = FACE_NORMALS[f];
-      for (let vi = 0; vi < 4; vi++) {
-        positions.push(
-          (voxel.x + fv[vi][0] - cx) * SCALE,
-          (voxel.z + fv[vi][2]) * SCALE,
-          -(voxel.y + fv[vi][1] - cy) * SCALE,
-        );
-        normals.push(fn[0], fn[2], -fn[1]);
-        colors.push(voxel.r * 0.6, voxel.g * 0.6, voxel.b * 0.6, alpha);
-      }
-      indices.push(bi, bi + 1, bi + 2, bi, bi + 2, bi + 3);
-    }
-  }
-  const vd = new VertexData();
-  vd.positions = positions; vd.normals = normals; vd.colors = colors; vd.indices = indices;
-  const mesh = new Mesh('body', scene);
-  vd.applyToMesh(mesh);
-  mesh.material = createUnlitMaterial(scene, 'body_unlit');
-  mesh.isPickable = false;
-  return mesh;
-}
-
-function voxelToViewer(vx: number, vy: number, vz: number, cx: number, cy: number): Vector3 {
-  return new Vector3((vx - cx) * SCALE, vz * SCALE, -(vy - cy) * SCALE);
-}
-
-// ビューワー座標→ボクセル座標への逆変換（マーカードラッグ時に使用）
-function viewerToVoxel(viewerPos: Vector3, cx: number, cy: number): Vec3 {
-  return {
-    x: viewerPos.x / SCALE + cx,
-    y: -(viewerPos.z / SCALE) + cy,
-    z: viewerPos.y / SCALE,
-  };
-}
-
-// 数値を小数第1位に丸める（UI表示用）
-function r1(n: number): number { return Math.round(n * 10) / 10; }
-
-// ========================================================================
-// プレビュー: ボーン階層付きスケルタルアニメーション
-// 各ボクセルを最も近いボーンに割り当て、ボーンごとのメッシュを構築する
-// ボーンを回転させるとそのボーンに属するボクセル群が一緒に動く
-// ========================================================================
-
-// 点Pから線分ABまでの距離の二乗を計算する（ボクセル→ボーン割り当て用）
-function distToSegmentSq(px: number, py: number, pz: number,
-  ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
-  const abx = bx - ax, aby = by - ay, abz = bz - az;
-  const apx = px - ax, apy = py - ay, apz = pz - az;
-  const lenSq = abx * abx + aby * aby + abz * abz;
-  if (lenSq < 0.0001) {
-    // Degenerate segment (same point) — use point distance
-    return apx * apx + apy * apy + apz * apz;
-  }
-  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby + apz * abz) / lenSq));
-  const cx = ax + abx * t - px, cy = ay + aby * t - py, cz = az + abz * t - pz;
-  return cx * cx + cy * cy + cz * cz;
-}
-
-// 全ボクセルを最も近いボーンセグメントに割り当てる
-// 連結性チェック付き: 分離したクラスターは隣接ボーンに再割り当て
-function assignVoxelsToBones(
-  voxels: VoxelEntry[],
-  bones: Record<string, Vec3>,
-): Record<string, VoxelEntry[]> {
-  const boneNames = Object.keys(bones);
-  const result: Record<string, VoxelEntry[]> = {};
-  for (const name of boneNames) result[name] = [];
-
-  // Build bone segments: each bone owns the segment from ITSELF to its CHILDREN.
-  // When a bone rotates, the body part from this joint toward the child joint moves.
-  // e.g. LeftForeArm (elbow) owns the forearm = elbow→wrist (LeftForeArm→LeftHand)
-  //      LeftArm owns the upper arm = LeftArm→LeftForeArm
-  // Leaf bones (no children) use point distance.
-
-  // Build children map
-  const childrenMap = new Map<string, string[]>();
-  for (const name of boneNames) childrenMap.set(name, []);
-  for (const def of BONE_DEFS) {
-    if (boneNames.includes(def.name) && def.parent && boneNames.includes(def.parent)) {
-      childrenMap.get(def.parent)!.push(def.name);
-    }
-  }
-
-  // Build segments: bone → each child (one segment per parent-child pair, owned by parent)
-  type Segment = { name: string; ax: number; ay: number; az: number; bx: number; by: number; bz: number };
-  const segments: Segment[] = [];
-  for (const name of boneNames) {
-    const b = bones[name];
-    const children = childrenMap.get(name) ?? [];
-    if (children.length > 0) {
-      for (const childName of children) {
-        const c = bones[childName];
-        segments.push({ name, ax: b.x, ay: b.y, az: b.z, bx: c.x, by: c.y, bz: c.z });
-      }
-    } else {
-      // Leaf bone — use point (degenerate segment)
-      segments.push({ name, ax: b.x, ay: b.y, az: b.z, bx: b.x, by: b.y, bz: b.z });
-    }
-  }
-
-  for (const v of voxels) {
-    let bestBone = segments[0].name;
-    let bestDist = Infinity;
-    for (const seg of segments) {
-      const dist = distToSegmentSq(v.x, v.y, v.z, seg.ax, seg.ay, seg.az, seg.bx, seg.by, seg.bz);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestBone = seg.name;
-      }
-    }
-    result[bestBone].push(v);
-  }
-
-  // Connectivity check: for each bone, keep only voxels connected to the
-  // largest cluster. Disconnected voxels are reassigned to the nearest
-  // face-adjacent bone that they connect to.
-  const globalMap = new Map<string, string>(); // position → boneName
-  for (const [boneName, bvs] of Object.entries(result)) {
-    for (const v of bvs) globalMap.set(`${v.x},${v.y},${v.z}`, boneName);
-  }
-
-  for (const boneName of boneNames) {
-    const bvs = result[boneName];
-    if (bvs.length === 0) continue;
-
-    // Build set for this bone
-    const posSet = new Set<string>();
-    const posMap = new Map<string, VoxelEntry>();
-    for (const v of bvs) {
-      const k = `${v.x},${v.y},${v.z}`;
-      posSet.add(k);
-      posMap.set(k, v);
-    }
-
-    // Find connected components via flood fill
-    const visited = new Set<string>();
-    const components: VoxelEntry[][] = [];
-
-    for (const v of bvs) {
-      const k = `${v.x},${v.y},${v.z}`;
-      if (visited.has(k)) continue;
-      const component: VoxelEntry[] = [];
-      const queue = [k];
-      visited.add(k);
-      while (queue.length > 0) {
-        const ck = queue.pop()!;
-        component.push(posMap.get(ck)!);
-        const cv = posMap.get(ck)!;
-        for (const [dx, dy, dz] of FACE_DIRS) {
-          const nk = `${cv.x + dx},${cv.y + dy},${cv.z + dz}`;
-          if (posSet.has(nk) && !visited.has(nk)) {
-            visited.add(nk);
-            queue.push(nk);
-          }
-        }
-      }
-      components.push(component);
-    }
-
-    if (components.length <= 1) continue;
-
-    // Keep largest component, reassign others
-    components.sort((a, b) => b.length - a.length);
-    const keep = components[0];
-    result[boneName] = keep;
-
-    // Reassign disconnected voxels to nearest adjacent bone
-    for (let ci = 1; ci < components.length; ci++) {
-      for (const v of components[ci]) {
-        // Find nearest adjacent bone via face neighbors
-        let reassignTo: string | null = null;
-        let reassignDist = Infinity;
-        for (const [dx, dy, dz] of FACE_DIRS) {
-          const nk = `${v.x + dx},${v.y + dy},${v.z + dz}`;
-          const nb = globalMap.get(nk);
-          if (nb && nb !== boneName) {
-            // Use segment distance to decide which bone
-            for (const seg of segments) {
-              if (seg.name !== nb) continue;
-              const d = distToSegmentSq(v.x, v.y, v.z, seg.ax, seg.ay, seg.az, seg.bx, seg.by, seg.bz);
-              if (d < reassignDist) { reassignDist = d; reassignTo = nb; }
-            }
-          }
-        }
-        if (!reassignTo) {
-          // No adjacent bone found, use nearest segment
-          let bestDist = Infinity;
-          for (const seg of segments) {
-            if (seg.name === boneName) continue;
-            const d = distToSegmentSq(v.x, v.y, v.z, seg.ax, seg.ay, seg.az, seg.bx, seg.by, seg.bz);
-            if (d < bestDist) { bestDist = d; reassignTo = seg.name; }
-          }
-        }
-        if (reassignTo) {
-          result[reassignTo].push(v);
-          globalMap.set(`${v.x},${v.y},${v.z}`, reassignTo);
-        }
-      }
-    }
-  }
-
-  return result;
-}
-
-// ボーン分割断面を球体キャップで封じる
-// 隣接する2つのボーンの境界中間点に球体を配置する
-// 球体は半球に分割: 各ボーンは相手側の領域に伸びる半球を取得する
-// これによりアニメーション時にボーン間の隙間が見えなくなる
-function addSphereCaps(
-  boneVoxels: Record<string, VoxelEntry[]>,
-): void {
-  // Build per-bone lookup: position → VoxelEntry
-  const boneMaps = new Map<string, Map<string, VoxelEntry>>();
-  for (const [boneName, voxels] of Object.entries(boneVoxels)) {
-    const m = new Map<string, VoxelEntry>();
-    for (const v of voxels) m.set(`${v.x},${v.y},${v.z}`, v);
-    boneMaps.set(boneName, m);
-  }
-
-  const processedPairs = new Set<string>();
-
-  // Collect all modifications to apply after iteration
-  const toAdd = new Map<string, VoxelEntry[]>();
-  for (const name of Object.keys(boneVoxels)) {
-    toAdd.set(name, []);
-  }
-
-  for (const [boneName] of Object.entries(boneVoxels)) {
-    const thisMap = boneMaps.get(boneName)!;
-
-    // Find boundary voxels grouped by adjacent bone
-    const adjBoundary = new Map<string, Map<string, VoxelEntry>>();
-    for (const [k, v] of thisMap) {
-      for (const [dx, dy, dz] of FACE_DIRS) {
-        const nk = `${v.x + dx},${v.y + dy},${v.z + dz}`;
-        if (thisMap.has(nk)) continue;
-        for (const [otherName, otherMap] of boneMaps) {
-          if (otherName !== boneName && otherMap.has(nk)) {
-            if (!adjBoundary.has(otherName)) adjBoundary.set(otherName, new Map());
-            adjBoundary.get(otherName)!.set(k, v);
-            break;
-          }
-        }
-      }
-    }
-
-    for (const [otherName, thisBnd] of adjBoundary) {
-      const pairKey = [boneName, otherName].sort().join('|');
-      if (processedPairs.has(pairKey)) continue;
-      processedPairs.add(pairKey);
-
-      const otherMap = boneMaps.get(otherName)!;
-
-      // Other side's boundary
-      const otherBnd = new Map<string, VoxelEntry>();
-      for (const [, v] of otherMap) {
-        for (const [dx, dy, dz] of FACE_DIRS) {
-          const nk = `${v.x + dx},${v.y + dy},${v.z + dz}`;
-          if (thisMap.has(nk)) { otherBnd.set(`${v.x},${v.y},${v.z}`, v); break; }
-        }
-      }
-
-      // Centers of each side's boundary
-      let tx = 0, ty = 0, tz = 0;
-      for (const v of thisBnd.values()) { tx += v.x; ty += v.y; tz += v.z; }
-      tx /= thisBnd.size; ty /= thisBnd.size; tz /= thisBnd.size;
-
-      let ox = 0, oy = 0, oz = 0;
-      for (const v of otherBnd.values()) { ox += v.x; oy += v.y; oz += v.z; }
-      ox /= otherBnd.size; oy /= otherBnd.size; oz /= otherBnd.size;
-
-      // Midpoint and normal
-      const mx = (tx + ox) / 2, my = (ty + oy) / 2, mz = (tz + oz) / 2;
-      const ndx = ox - tx, ndy = oy - ty, ndz = oz - tz;
-      const nLen = Math.sqrt(ndx * ndx + ndy * ndy + ndz * ndz) || 1;
-      const nnx = ndx / nLen, nny = ndy / nLen, nnz = ndz / nLen;
-
-      // Radius: max distance from midpoint to any boundary voxel (= actual cross-section size)
-      let maxDistSq = 0;
-      for (const v of thisBnd.values()) {
-        const dsq = (v.x - mx) ** 2 + (v.y - my) ** 2 + (v.z - mz) ** 2;
-        if (dsq > maxDistSq) maxDistSq = dsq;
-      }
-      for (const v of otherBnd.values()) {
-        const dsq = (v.x - mx) ** 2 + (v.y - my) ** 2 + (v.z - mz) ** 2;
-        if (dsq > maxDistSq) maxDistSq = dsq;
-      }
-      const radius = Math.max(1, Math.sqrt(maxDistSq) / 2);
-      const radiusSq = radius * radius;
-      const ri = Math.ceil(radius);
-
-      // All boundary voxels for color lookup
-      const allBnd = [...thisBnd.values(), ...otherBnd.values()];
-
-      for (let sx = -ri; sx <= ri; sx++) {
-        for (let sy = -ri; sy <= ri; sy++) {
-          for (let sz = -ri; sz <= ri; sz++) {
-            const vx = Math.round(mx) + sx;
-            const vy = Math.round(my) + sy;
-            const vz = Math.round(mz) + sz;
-            if ((vx - mx) ** 2 + (vy - my) ** 2 + (vz - mz) ** 2 > radiusSq) continue;
-
-            const k = `${vx},${vy},${vz}`;
-
-            // Color from nearest boundary voxel
-            let nearestDist = Infinity;
-            let nearestColor = { r: 0.5, g: 0.5, b: 0.5 };
-            for (const bv of allBnd) {
-              const d = (vx - bv.x) ** 2 + (vy - bv.y) ** 2 + (vz - bv.z) ** 2;
-              if (d < nearestDist) { nearestDist = d; nearestColor = { r: bv.r, g: bv.g, b: bv.b }; }
-            }
-            const entry: VoxelEntry = { x: vx, y: vy, z: vz, r: nearestColor.r, g: nearestColor.g, b: nearestColor.b };
-
-            // Split: each bone gets the hemisphere extending INTO the other's territory.
-            // depthProj > 0 = toward otherBone → assign to thisBone (cap for thisBone)
-            // depthProj <= 0 = toward thisBone → assign to otherBone (cap for otherBone)
-            const depthProj = (vx - mx) * nnx + (vy - my) * nny + (vz - mz) * nnz;
-
-            if (depthProj > 0) {
-              // This position is in otherBone's territory → add to thisBone as cap
-              if (!thisMap.has(k)) toAdd.get(boneName)!.push(entry);
-            } else {
-              // This position is in thisBone's territory → add to otherBone as cap
-              if (!otherMap.has(k)) toAdd.get(otherName)!.push(entry);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Apply modifications
-  for (const [boneName, addVoxels] of toAdd) {
-    if (addVoxels.length > 0) boneVoxels[boneName].push(...addVoxels);
-  }
-}
-
-// ボーンローカル座標系でボクセルメッシュを構築する
-// 頂点位置はボーン位置からの相対座標にベイクされる
-// これによりボーンのTransformNodeが回転するとメッシュも一緒に動く
-function buildBoneMeshLocal(
-  voxels: VoxelEntry[], scene: Scene, name: string,
-  cx: number, cy: number, bonePos: Vec3,
-): Mesh {
-  const boneViewX = (bonePos.x - cx) * SCALE;
-  const boneViewY = bonePos.z * SCALE;
-  const boneViewZ = -(bonePos.y - cy) * SCALE;
-
-  const occupied = new Set<string>();
-  for (const v of voxels) occupied.add(`${v.x},${v.y},${v.z}`);
-  const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
-  for (const voxel of voxels) {
-    for (let f = 0; f < 6; f++) {
-      const [dx, dy, dz] = FACE_DIRS[f];
-      if (occupied.has(`${voxel.x + dx},${voxel.y + dy},${voxel.z + dz}`)) continue;
-      const bi = positions.length / 3;
-      const fv = FACE_VERTS[f], fn = FACE_NORMALS[f];
-      for (let vi = 0; vi < 4; vi++) {
-        // Vertex position relative to bone (bone-local space)
-        positions.push(
-          (voxel.x + fv[vi][0] - cx) * SCALE - boneViewX,
-          (voxel.z + fv[vi][2]) * SCALE - boneViewY,
-          -(voxel.y + fv[vi][1] - cy) * SCALE - boneViewZ,
-        );
-        normals.push(fn[0], fn[2], -fn[1]);
-        colors.push(voxel.r, voxel.g, voxel.b, 1);
-      }
-      indices.push(bi, bi + 1, bi + 2, bi, bi + 2, bi + 3);
-    }
-  }
-  const vd = new VertexData();
-  vd.positions = positions; vd.normals = normals; vd.colors = colors; vd.indices = indices;
-  const mesh = new Mesh(name, scene);
-  vd.applyToMesh(mesh);
-  mesh.material = createUnlitMaterial(scene, name + '_unlit');
-  return mesh;
-}
-
-// ボーン階層付きのTransformNodeツリーを構築する
-// 各ノードは親ボーンからの相対位置で配置される
-// アニメーション時: ワールド空間のデルタクォータニオンを親の逆で
-// ローカルデルタに変換して適用する
-function buildSkeletalPreview(
-  voxels: VoxelEntry[], bones: Record<string, Vec3>,
-  scene: Scene, cx: number, cy: number,
-): { nodes: Map<string, TransformNode>; meshes: Map<string, Mesh> } {
-  const boneVoxels = assignVoxelsToBones(voxels, bones);
-  addSphereCaps(boneVoxels);
-
-  const nodes = new Map<string, TransformNode>();
-  const meshes = new Map<string, Mesh>();
-
-  // Create all nodes
-  for (const boneDef of BONE_DEFS) {
-    const bonePos = bones[boneDef.name];
-    if (!bonePos) continue;
-    const node = new TransformNode(`bone_${boneDef.name}`, scene);
-    nodes.set(boneDef.name, node);
-  }
-
-  // Set up hierarchy and relative positions
-  for (const boneDef of BONE_DEFS) {
-    const node = nodes.get(boneDef.name);
-    const bonePos = bones[boneDef.name];
-    if (!node || !bonePos) continue;
-
-    const viewPos = voxelToViewer(bonePos.x, bonePos.y, bonePos.z, cx, cy);
-
-    if (boneDef.parent) {
-      const parentNode = nodes.get(boneDef.parent);
-      const parentPos = bones[boneDef.parent];
-      if (parentNode && parentPos) {
-        node.parent = parentNode;
-        const parentViewPos = voxelToViewer(parentPos.x, parentPos.y, parentPos.z, cx, cy);
-        node.position = viewPos.subtract(parentViewPos);
-      } else {
-        node.position = viewPos;
-      }
-    } else {
-      node.position = viewPos;
-    }
-  }
-
-  // Create meshes with bone-local vertices
-  for (const boneDef of BONE_DEFS) {
-    const bv = boneVoxels[boneDef.name];
-    const node = nodes.get(boneDef.name);
-    const bonePos = bones[boneDef.name];
-    if (!bv || bv.length === 0 || !node || !bonePos) continue;
-
-    const mesh = buildBoneMeshLocal(bv, scene, `preview_${boneDef.name}`, cx, cy, bonePos);
-    mesh.parent = node;
-    mesh.isPickable = false;
-    meshes.set(boneDef.name, mesh);
-  }
-
-  return { nodes, meshes };
-}
-
-// ========================================================================
-// FBXモーションデータ
-// scripts/convert-fbx-motion.mjsで変換された.motion.jsonファイルから読み込む
-// 各ボーンのワールド空間デルタクォータニオン + デルタポジション
-// ========================================================================
-interface BoneFrameData {
-  dq: [number, number, number, number]; // デルタクォータニオン [x,y,z,w]（ワールド空間、Three.js座標系）
-  dp?: [number, number, number];        // デルタポジション [x,y,z]（ワールド空間、Three.js座標系。Hipsのみ使用）
-}
-
-// モーションクリップ全体のデータ構造
-interface MotionClip {
-  name: string;            // モーション識別名
-  label: string;           // UI表示用ラベル
-  duration: number;        // 再生時間（秒）
-  fps: number;             // フレームレート
-  frameCount: number;      // 総フレーム数
-  fbxBodyHeight: number;   // FBXのHips→Head距離（ボクセルモデルとのスケール合わせに使用）
-  outputBones: string[];   // 出力対象ボーン名リスト
-  bindWorldPositions?: Record<string, [number, number, number]>; // FBXバインドポーズのワールド座標
-  frames: Record<string, BoneFrameData>[]; // フレーム配列
-}
-
-// 利用可能なモーションファイル一覧（/models/character-motion/ディレクトリ）
-const MOTION_FILES: { name: string; label: string; file: string }[] = [
-  { name: 'hip_hop', label: 'Hip Hop Dancing', file: '/models/character-motion/Hip Hop Dancing.motion.json' },
-  { name: 'belly_dance', label: 'Belly Dance', file: '/models/character-motion/Belly Dance.motion.json' },
-  { name: 'jump', label: 'Jump', file: '/models/character-motion/Jump.motion.json' },
-  { name: 'martelo', label: 'Martelo 3', file: '/models/character-motion/Martelo 3.motion.json' },
-  { name: 'mma_kick', label: 'MMA Kick', file: '/models/character-motion/Mma Kick.motion.json' },
-  { name: 'roundhouse', label: 'Roundhouse Kick', file: '/models/character-motion/Roundhouse Kick.motion.json' },
-  { name: 'snake_hip_hop', label: 'Snake Hip Hop', file: '/models/character-motion/Snake Hip Hop Dance.motion.json' },
-];
-
-// 装備パーツの情報（髪、衣装等の追加ボクセルパーツ）
-interface EquipPart { key: string; file: string; default_on: boolean; voxels: number; }
-
-// ページモード: edit=マーカー編集, preview=モーションプレビュー
-type PageMode = 'edit' | 'preview';
-
-// クォータニオン変換方式の定義
-// Three.js座標系（右手系）→ ビューワー座標系（左手系、Babylon.js）への変換
-// 軸マッピング: viewer = (-Three_x, Three_y, Three_z) = X反転
-// 反射変換（det=-1）で右手系→左手系に変換
-// q_viewer = (x, -y, -z, w) from q_three = (x, y, z, w)
-type QuatConversion = 'correct' | 'conv1' | 'conv2' | 'identity';
-const QUAT_CONVERSIONS: { key: QuatConversion; label: string; desc: string }[] = [
-  { key: 'correct',  label: '(x,-y,-z,w)',  desc: 'X-reflect (correct)' },
-  { key: 'conv1',    label: '(-x,-y,z,w)',   desc: 'Z-flip only (old)' },
-  { key: 'conv2',    label: '(x,y,-z,w)',    desc: 'Negate Z only' },
-  { key: 'identity', label: '(x,y,z,w)',     desc: 'No conversion' },
-];
+// ボクセルスケルトン共通ライブラリ
+import {
+  BONE_DEFS, type Vec3, type MarkerData,
+  calculateAllBones, mirrorMarker, getDefaultMarkers,
+  buildSkeletalCharacter, voxelToViewer,
+  type MotionClip,
+  getBoneDepth,
+} from '@/lib/voxel-skeleton';
+// このページ固有の定数・型・ヘルパー
+import {
+  MARKER_DEFS, type MarkerDef, VIEW_DEFS, type ViewDirection, MOTION_FILES,
+  type EquipPart, type PageMode, type QuatConversion, QUAT_CONVERSIONS,
+  buildBodyMesh, viewerToVoxel, r1,
+} from './constants';
+// カスタムフック: Ref管理、モーション再生、プレビューモード
+import { useBoneConfigRefs } from './hooks/useBoneConfigRefs';
+import { useBoneConfigMotion } from './hooks/useBoneConfigMotion';
+import { useBoneConfigPreview } from './hooks/useBoneConfigPreview';
 
 // ========================================================================
 // メインコンポーネント
@@ -797,25 +43,19 @@ const QUAT_CONVERSIONS: { key: QuatConversion; label: string; desc: string }[] =
 // 右側: Babylon.jsの3Dビューワー（マーカードラッグ、モーション再生）
 // ========================================================================
 export default function BoneConfigPage() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sceneRef = useRef<Scene | null>(null);
-  const cameraRef = useRef<ArcRotateCamera | null>(null);
-  const bodyMeshRef = useRef<Mesh | null>(null);
-  const jointSpheresRef = useRef<Map<string, Mesh>>(new Map());
-  const markerSpheresRef = useRef<Map<string, Mesh>>(new Map());
-  const boneLineMeshesRef = useRef<Mesh[]>([]);
-  const centerLineMeshRef = useRef<Mesh | null>(null);
-  const centerRef = useRef({ cx: 0, cy: 0, maxZ: 103 });
-  const draggingRef = useRef<{ markerName: string; plane: Plane; offset: Vector3 } | null>(null);
-  const viewRef = useRef<ViewDirection>('front');
-  const autoMirrorRef = useRef(true);
-  const previewNodesRef = useRef<Map<string, TransformNode>>(new Map());
-  const previewMeshesRef = useRef<Map<string, Mesh>>(new Map());
-  const debugBonesRef = useRef<{ spheres: Mesh[]; lines: Mesh | null }>({ spheres: [], lines: null });
-  const boneRestPosRef = useRef<Map<string, Vector3>>(new Map());
-  const voxelBodyHeightRef = useRef(0);  // viewer-space Hips→Head distance
-  const voxelsRef = useRef<VoxelEntry[]>([]);
+  // 全Refオブジェクトをフックから取得（3Dシーン、メッシュ、アニメーション等）
+  const refs = useBoneConfigRefs();
+  const {
+    canvasRef, sceneRef, cameraRef, bodyMeshRef,
+    jointSpheresRef, markerSpheresRef, boneLineMeshesRef, centerLineMeshRef,
+    centerRef, draggingRef, viewRef, autoMirrorRef,
+    previewNodesRef, previewMeshesRef, debugBonesRef,
+    boneRestPosRef, voxelBodyHeightRef, voxelsRef,
+    animCallbackRef, animTimeRef, pausedRef, applyFrameRef, loadKeyRef,
+  } = refs;
 
+  // ========== State定義 ==========
+  // 現在選択中のモデル（URLパラメータまたはデフォルト）
   const [currentModel, setCurrentModel] = useState<ModelEntry>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -827,38 +67,53 @@ export default function BoneConfigPage() {
     }
     return MODEL_REGISTRY.find(m => m.id === DEFAULT_MODEL_ID) ?? MODEL_REGISTRY[0];
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [markers, setMarkers] = useState<MarkerData>(() => getDefaultMarkers(35));
-  const [calculatedBones, setCalculatedBones] = useState<Record<string, Vec3>>({});
-  const [selectedMarker, setSelectedMarker] = useState<string>('Chin');
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [showBody, setShowBody] = useState(true);
-  const [showBones, setShowBones] = useState(true);
-  const [tab, setTab] = useState<'markers' | 'bones'>('markers');
-  const [viewDir, setViewDir] = useState<ViewDirection>('front');
-  const [autoMirror, setAutoMirror] = useState(true);
-  const [mode, setMode] = useState<PageMode>('edit');
-  const [playingMotion, setPlayingMotion] = useState<string | null>(null);
-  const [motionSpeed, setMotionSpeed] = useState(1.0);
-  const [loadedClips, setLoadedClips] = useState<Record<string, MotionClip>>({});
-  const [loadingMotion, setLoadingMotion] = useState(false);
-  const [quatConv, setQuatConv] = useState<QuatConversion>('correct');
-  const [paused, setPaused] = useState(false);
-  const [currentFrame, setCurrentFrame] = useState(0);
-  const [showBonesOnly, setShowBonesOnly] = useState(false);
-  const animCallbackRef = useRef<(() => void) | null>(null);
-  const animTimeRef = useRef(0);
-  const pausedRef = useRef(false);
-  const applyFrameRef = useRef<((frame: number) => void) | null>(null);
-  const loadKeyRef = useRef(0);
+  const [loading, setLoading] = useState(true);       // モデル読み込み中フラグ
+  const [error, setError] = useState<string | null>(null); // エラーメッセージ
+  const [markers, setMarkers] = useState<MarkerData>(() => getDefaultMarkers(35)); // 8マーカーの座標
+  const [calculatedBones, setCalculatedBones] = useState<Record<string, Vec3>>({}); // マーカーから計算された41ボーン位置
+  const [selectedMarker, setSelectedMarker] = useState<string>('Chin'); // 選択中のマーカー名
+  const [saving, setSaving] = useState(false);         // 保存中フラグ
+  const [dirty, setDirty] = useState(false);           // 未保存の変更があるか
+  const [showBody, setShowBody] = useState(true);      // ボディメッシュの表示/非表示
+  const [showBones, setShowBones] = useState(true);    // ボーン表示の表示/非表示
+  const [tab, setTab] = useState<'markers' | 'bones'>('markers'); // サイドバーのタブ切替
+  const [viewDir, setViewDir] = useState<ViewDirection>('front');  // カメラビュー方向
+  const [autoMirror, setAutoMirror] = useState(true);  // 左右対称ミラー有効/無効
+  const [mode, setMode] = useState<PageMode>('edit');  // edit=マーカー編集, preview=モーションプレビュー
+  const [motionSpeed, setMotionSpeed] = useState(1.0); // モーション再生速度
+  const [quatConv, setQuatConv] = useState<QuatConversion>('correct'); // クォータニオン変換方式
+  const [paused, setPaused] = useState(false);         // モーション一時停止
+  const [currentFrame, setCurrentFrame] = useState(0); // 現在のフレーム番号
+  const [showBonesOnly, setShowBonesOnly] = useState(false); // デバッグ:ボーンのみ表示
 
-  // Equipment state
-  const [equipParts, setEquipParts] = useState<EquipPart[]>([]);
-  const [equipEnabled, setEquipEnabled] = useState<Record<string, boolean>>({});
-  const [equipVoxelCache, setEquipVoxelCache] = useState<Record<string, VoxelEntry[]>>({});
-  const [equipLoading, setEquipLoading] = useState(false);
+  // モーション再生ロジック（フック）
+  const { playingMotion, loadingMotion, loadedClips, stopMotion, startMotion, playMotionClip } = useBoneConfigMotion({
+    refs, calculatedBones, motionSpeed, quatConv, showBonesOnly, setCurrentFrame,
+  });
+
+  // 装備パーツ状態
+  const [equipParts, setEquipParts] = useState<EquipPart[]>([]);         // 利用可能な装備パーツ一覧
+  const [equipEnabled, setEquipEnabled] = useState<Record<string, boolean>>({}); // 各パーツの有効/無効
+  const [equipVoxelCache, setEquipVoxelCache] = useState<Record<string, VoxelEntry[]>>({}); // 読み込み済みパーツのキャッシュ
+
+  // プレビューモード管理（フック）
+  const {
+    loadEquipmentVoxels, enterPreview, exitPreview, handleConfirmSave, equipLoading,
+  } = useBoneConfigPreview({
+    refs, calculatedBones, markers, autoMirror, showBody,
+    currentModel: { dir: currentModel.dir }, equipParts, equipEnabled, equipVoxelCache,
+    setEquipVoxelCache, setMode, setShowBonesOnly, setSaving, setDirty,
+    setCameraView: (dir: ViewDirection) => {
+      const camera = cameraRef.current;
+      if (!camera) return;
+      const vDef = VIEW_DEFS.find(v => v.key === dir)!;
+      camera.alpha = vDef.alpha;
+      camera.beta = Math.PI / 2;
+      viewRef.current = dir;
+    },
+    stopMotion,
+    buildSkeletalPreview: buildSkeletalCharacter as any,
+  });
 
   // Keep refs in sync
   useEffect(() => { autoMirrorRef.current = autoMirror; }, [autoMirror]);
@@ -912,7 +167,9 @@ export default function BoneConfigPage() {
     return MARKER_DEFS;
   }, [autoMirror]);
 
-  // Build all visuals
+  // 全ビジュアル要素を再構築する
+  // マーカー球体、ボーン球体/線、中心線を再描画する
+  // markers, calculatedBones, selectedMarker等が変化するたびに呼ばれる
   const rebuildVisuals = useCallback(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -1027,7 +284,8 @@ export default function BoneConfigPage() {
     }
   }, [markers, calculatedBones, selectedMarker, showBones, autoMirror, getMirrorCenterX, getVisibleMarkers]);
 
-  // Init engine
+  // Babylon.jsエンジン初期化（マウント時に1回だけ実行）
+  // シーン、カメラ、ライト、グラウンド、マウスイベント（マーカードラッグ）を設定
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1141,7 +399,8 @@ export default function BoneConfigPage() {
     return () => { window.removeEventListener('resize', onResize); engine.dispose(); };
   }, []);
 
-  // Load body + saved config (re-runs when model changes)
+  // モデル読み込み（モデル切替時に再実行）
+  // VOXファイル読み込み→ボディメッシュ構築→装備パーツ読み込み→保存済みボーン設定復元
   useEffect(() => {
     if (!sceneRef.current) return;
     const scene = sceneRef.current;
@@ -1222,6 +481,8 @@ export default function BoneConfigPage() {
     if (bodyMeshRef.current) bodyMeshRef.current.setEnabled(showBody);
   }, [showBody]);
 
+  // マーカー座標の更新（サイドバーの数値入力から呼ばれる）
+  // 左右対称ミラーが有効な場合、右側マーカーも自動更新する
   const updateMarker = useCallback((markerName: string, axis: 'x' | 'y' | 'z', value: number) => {
     setMarkers(prev => {
       let next = { ...prev, [markerName]: { ...prev[markerName], [axis]: value } };
@@ -1266,6 +527,7 @@ export default function BoneConfigPage() {
     });
   }, [selectedMarker, applyAutoMirror]);
 
+  // マーカー位置をデフォルトにリセット
   const resetToDefaults = useCallback(() => {
     const { cx } = centerRef.current;
     setMarkers(getDefaultMarkers(cx));
@@ -1273,544 +535,17 @@ export default function BoneConfigPage() {
     setDirty(true);
   }, []);
 
+  // ========== JSX用の派生値 ==========
+  const selMarker = MARKER_DEFS.find(m => m.name === selectedMarker); // 選択中マーカーの定義
+  const selPos = selectedMarker ? markers[selectedMarker] : null;      // 選択中マーカーの座標
+  const currentViewDef = VIEW_DEFS.find(v => v.key === viewDir)!;     // 現在のビュー定義
+  const visibleMarkers = getVisibleMarkers();                          // 表示すべきマーカー一覧
+  const mirrorCenterX = getMirrorCenterX();                            // 左右対称の中心X
 
-  // Load equipment voxels for enabled parts
-  const loadEquipmentVoxels = useCallback(async (): Promise<VoxelEntry[]> => {
-    const enabledKeys = Object.entries(equipEnabled).filter(([, v]) => v).map(([k]) => k);
-    if (enabledKeys.length === 0) return [];
-
-    const cache = { ...equipVoxelCache };
-    const toLoad = enabledKeys.filter(k => !cache[k]);
-
-    if (toLoad.length > 0) {
-      setEquipLoading(true);
-      const results = await Promise.all(
-        toLoad.map(async key => {
-          const part = equipParts.find(p => p.key === key);
-          if (!part) return { key, voxels: [] as VoxelEntry[] };
-          try {
-            const { voxels } = await loadVoxFile(part.file);
-            return { key, voxels };
-          } catch {
-            return { key, voxels: [] as VoxelEntry[] };
-          }
-        })
-      );
-      for (const r of results) cache[r.key] = r.voxels;
-      setEquipVoxelCache(cache);
-      setEquipLoading(false);
-    }
-
-    // Merge all enabled equipment voxels
-    const allEquip: VoxelEntry[] = [];
-    for (const key of enabledKeys) {
-      if (cache[key]) allEquip.push(...cache[key]);
-    }
-    return allEquip;
-  }, [equipEnabled, equipParts, equipVoxelCache]);
-
-  // Enter preview: hide edit visuals, build skeletal hierarchy, free camera
-  const enterPreview = useCallback(async () => {
-    const scene = sceneRef.current;
-    const canvas = canvasRef.current;
-    if (!scene || !canvas || Object.keys(calculatedBones).length === 0) return;
-    const { cx, cy } = centerRef.current;
-
-    // Hide edit visuals
-    if (bodyMeshRef.current) bodyMeshRef.current.setEnabled(false);
-    for (const m of markerSpheresRef.current.values()) m.setEnabled(false);
-    for (const m of jointSpheresRef.current.values()) m.setEnabled(false);
-    for (const m of boneLineMeshesRef.current) m.setEnabled(false);
-    if (centerLineMeshRef.current) centerLineMeshRef.current.setEnabled(false);
-
-    // Dispose old preview
-    for (const m of previewMeshesRef.current.values()) m.dispose();
-    for (const n of previewNodesRef.current.values()) n.dispose();
-    previewMeshesRef.current.clear();
-    previewNodesRef.current.clear();
-
-    // Load equipment voxels and merge with body
-    const equipVoxels = await loadEquipmentVoxels();
-    const mergedVoxels = [...voxelsRef.current];
-    if (equipVoxels.length > 0) {
-      // Equipment voxels override body voxels at same position (clothing priority)
-      const bodySet = new Set<string>();
-      for (const v of mergedVoxels) bodySet.add(`${v.x},${v.y},${v.z}`);
-      for (const v of equipVoxels) {
-        const k = `${v.x},${v.y},${v.z}`;
-        if (bodySet.has(k)) {
-          // Replace body voxel with equipment voxel
-          const idx = mergedVoxels.findIndex(bv => bv.x === v.x && bv.y === v.y && bv.z === v.z);
-          if (idx >= 0) mergedVoxels[idx] = v;
-        } else {
-          mergedVoxels.push(v);
-        }
-      }
-    }
-
-    // Build hierarchical 20-bone skeleton with voxel meshes
-    const { nodes, meshes } = buildSkeletalPreview(mergedVoxels, calculatedBones, scene, cx, cy);
-    previewNodesRef.current = nodes;
-    previewMeshesRef.current = meshes;
-
-    // Store rest positions for all bones (for animation delta application)
-    const restPosMap = new Map<string, Vector3>();
-    for (const boneDef of BONE_DEFS) {
-      const bp = calculatedBones[boneDef.name];
-      if (bp) {
-        restPosMap.set(boneDef.name, voxelToViewer(bp.x, bp.y, bp.z, cx, cy));
-      }
-    }
-    boneRestPosRef.current = restPosMap;
-
-    // Compute voxel body height (Hips→Head in viewer space) for FBX scale matching
-    const hipsPos = calculatedBones['Hips'];
-    const headPos = calculatedBones['Head'];
-    if (hipsPos && headPos) {
-      voxelBodyHeightRef.current = (headPos.z - hipsPos.z) * SCALE;
-    }
-
-    // Enable free camera rotation
-    const camera = cameraRef.current;
-    if (camera) {
-      camera.inputs.addPointers();
-      camera.attachControl(canvas, true);
-    }
-
-    setMode('preview');
-  }, [calculatedBones, loadEquipmentVoxels]);
-
-  // Exit preview: restore edit visuals, dispose preview meshes, fixed camera
-  const exitPreview = useCallback(() => {
-    // Stop animation
-    const scene = sceneRef.current;
-    if (scene && animCallbackRef.current) {
-      scene.unregisterBeforeRender(animCallbackRef.current);
-      animCallbackRef.current = null;
-    }
-    animTimeRef.current = 0;
-    setPlayingMotion(null);
-
-    // Dispose preview meshes and debug bones
-    for (const m of previewMeshesRef.current.values()) m.dispose();
-    for (const n of previewNodesRef.current.values()) n.dispose();
-    previewMeshesRef.current.clear();
-    previewNodesRef.current.clear();
-    for (const s of debugBonesRef.current.spheres) s.dispose();
-    if (debugBonesRef.current.lines) debugBonesRef.current.lines.dispose();
-    debugBonesRef.current = { spheres: [], lines: null };
-    setShowBonesOnly(false);
-
-    // Restore edit visuals
-    if (bodyMeshRef.current) bodyMeshRef.current.setEnabled(showBody);
-    for (const m of markerSpheresRef.current.values()) m.setEnabled(true);
-    for (const m of jointSpheresRef.current.values()) m.setEnabled(true);
-    for (const m of boneLineMeshesRef.current) m.setEnabled(true);
-    if (centerLineMeshRef.current) centerLineMeshRef.current.setEnabled(true);
-
-    // Restore fixed camera
-    const camera = cameraRef.current;
-    if (camera) {
-      camera.detachControl();
-      camera.inputs.clear();
-      camera.inputs.addMouseWheel();
-      setCameraView(viewRef.current);
-    }
-
-    setMode('edit');
-  }, [showBody, setCameraView]);
-
-  // Save from preview mode
-  const handleConfirmSave = useCallback(async () => {
-    setSaving(true);
-    try {
-      const resp = await fetch(`/api/bone-config?dir=${currentModel.dir}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markers, bones: calculatedBones, autoMirror }),
-      });
-      if (!resp.ok) throw new Error('Save failed');
-      setDirty(false);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
-    }
-    setSaving(false);
-  }, [markers, calculatedBones, autoMirror, currentModel]);
-
-  // Motion playback
-  const stopMotion = useCallback(() => {
-    const scene = sceneRef.current;
-    if (scene && animCallbackRef.current) {
-      scene.unregisterBeforeRender(animCallbackRef.current);
-    }
-    animCallbackRef.current = null;
-    animTimeRef.current = 0;
-    setPlayingMotion(null);
-  }, []);
-
-  // Load a motion clip from JSON file
-  const loadMotionClip = useCallback(async (motionName: string): Promise<MotionClip | null> => {
-    if (loadedClips[motionName]) return loadedClips[motionName];
-
-    const motionDef = MOTION_FILES.find(m => m.name === motionName);
-    if (!motionDef) return null;
-
-    setLoadingMotion(true);
-    try {
-      const resp = await fetch(motionDef.file);
-      if (!resp.ok) throw new Error(`Failed to load ${motionDef.file}`);
-      const data = await resp.json();
-      const clip: MotionClip = {
-        name: motionName,
-        label: motionDef.label,
-        duration: data.duration,
-        fps: data.fps,
-        frameCount: data.frameCount,
-        fbxBodyHeight: data.fbxBodyHeight || 2.854,
-        outputBones: data.outputBones || [],
-        bindWorldPositions: data.bindWorldPositions,
-        frames: data.frames,
-      };
-      setLoadedClips(prev => ({ ...prev, [motionName]: clip }));
-      setLoadingMotion(false);
-      return clip;
-    } catch (e) {
-      console.error('Failed to load motion:', e);
-      setLoadingMotion(false);
-      return null;
-    }
-  }, [loadedClips]);
-
-  const playMotionClip = useCallback((clip: MotionClip) => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    if (animCallbackRef.current) {
-      scene.unregisterBeforeRender(animCallbackRef.current);
-      animCallbackRef.current = null;
-    }
-
-    // Scale factor: voxel body height / FBX body height
-    const scaleFactor = clip.fbxBodyHeight > 0
-      ? voxelBodyHeightRef.current / clip.fbxBodyHeight
-      : 1;
-
-    const bwp = clip.bindWorldPositions;
-    const voxelHipsPos = boneRestPosRef.current.get('Hips') ?? Vector3.Zero();
-    const hipsBindFBX = bwp?.['Hips'] ?? [0, 0, 0];
-
-    // FBX rest positions in viewer space (for debug bones only)
-    const fbxRestViewer = new Map<string, Vector3>();
-    for (const boneDef of BONE_DEFS) {
-      const bp = bwp?.[boneDef.name];
-      if (bp) {
-        const relX = bp[0] - hipsBindFBX[0];
-        const relY = bp[1] - hipsBindFBX[1];
-        const relZ = bp[2] - hipsBindFBX[2];
-        fbxRestViewer.set(boneDef.name, new Vector3(
-          voxelHipsPos.x + (-relX) * scaleFactor,
-          voxelHipsPos.y + relY * scaleFactor,
-          voxelHipsPos.z + relZ * scaleFactor,
-        ));
-      }
-    }
-
-    // HIERARCHICAL APPROACH: Keep node hierarchy from buildSkeletalPreview.
-    // Convert world-space dq → local rotation via parent inverse.
-    // Apply rest pose correction: rotate voxel bone direction to match FBX bone direction.
-
-    // Compute rest pose correction for each bone:
-    // correctionQ rotates voxelBoneDir → fbxBoneDir (both in viewer space).
-    // This ensures FBX rotation deltas produce correct results on voxel geometry.
-    const restCorrections = new Map<string, Quaternion>();
-    for (const boneDef of BONE_DEFS) {
-      if (!boneDef.parent) continue;
-      const voxelChild = boneRestPosRef.current.get(boneDef.name);
-      const voxelParent = boneRestPosRef.current.get(boneDef.parent);
-      const fbxChild = fbxRestViewer.get(boneDef.name);
-      const fbxParent = fbxRestViewer.get(boneDef.parent);
-      if (!voxelChild || !voxelParent || !fbxChild || !fbxParent) continue;
-
-      const voxelDir = voxelChild.subtract(voxelParent);
-      const fbxDirRaw = fbxChild.subtract(fbxParent);
-      // Flip Z: FBX bone direction Z is inverted relative to voxel viewer Z
-      // (same root cause as the body front/back inversion fixed earlier)
-      const fbxDir = new Vector3(fbxDirRaw.x, fbxDirRaw.y, -fbxDirRaw.z);
-      if (voxelDir.length() < 0.001 || fbxDir.length() < 0.001) continue;
-
-      voxelDir.normalize();
-      fbxDir.normalize();
-
-      // DEBUG: Log bone directions for investigation
-      if (['LeftArm','LeftForeArm','LeftUpLeg','LeftLeg','Spine','Spine2','Neck'].includes(boneDef.name)) {
-        console.log(`[RestCorr] ${boneDef.name}: voxel=(${voxelDir.x.toFixed(3)},${voxelDir.y.toFixed(3)},${voxelDir.z.toFixed(3)}) fbx=(${fbxDir.x.toFixed(3)},${fbxDir.y.toFixed(3)},${fbxDir.z.toFixed(3)}) dot=${Vector3.Dot(voxelDir, fbxDir).toFixed(3)}`);
-      }
-
-      // Quaternion from voxelDir → fbxDir
-      const dot = Vector3.Dot(voxelDir, fbxDir);
-      if (dot > 0.9999) {
-        // Already aligned
-        continue;
-      }
-      if (dot < -0.9999) {
-        // Opposite: rotate 180° around any perpendicular axis
-        const perp = Math.abs(voxelDir.x) < 0.9
-          ? Vector3.Cross(voxelDir, Vector3.Right())
-          : Vector3.Cross(voxelDir, Vector3.Up());
-        perp.normalize();
-        restCorrections.set(boneDef.name, new Quaternion(perp.x, perp.y, perp.z, 0));
-        continue;
-      }
-      const axis = Vector3.Cross(voxelDir, fbxDir);
-      axis.normalize();
-      const angle = Math.acos(Math.min(1, Math.max(-1, dot)));
-      restCorrections.set(boneDef.name, Quaternion.RotationAxis(axis, angle));
-    }
-
-    // Ensure hierarchy is intact (restore if previously detached)
-    for (const boneDef of BONE_DEFS) {
-      const node = previewNodesRef.current.get(boneDef.name);
-      if (!node) continue;
-      if (boneDef.parent) {
-        const parentNode = previewNodesRef.current.get(boneDef.parent);
-        if (parentNode && node.parent !== parentNode) {
-          node.parent = parentNode;
-          const bonePos = boneRestPosRef.current.get(boneDef.name);
-          const parentPos = boneRestPosRef.current.get(boneDef.parent);
-          if (bonePos && parentPos) {
-            node.position = bonePos.subtract(parentPos);
-          }
-        }
-      } else {
-        node.parent = null;
-        const rest = boneRestPosRef.current.get(boneDef.name);
-        if (rest) node.position = rest.clone();
-      }
-      node.rotationQuaternion = Quaternion.Identity();
-    }
-
-    // Create debug bone spheres
-    for (const s of debugBonesRef.current.spheres) s.dispose();
-    if (debugBonesRef.current.lines) debugBonesRef.current.lines.dispose();
-    const debugSpheres: Mesh[] = [];
-    for (const boneDef of BONE_DEFS) {
-      const fbxRest = fbxRestViewer.get(boneDef.name);
-      if (!fbxRest) continue;
-      const sphere = MeshBuilder.CreateSphere(`dbg_${boneDef.name}`, { diameter: 0.15 }, scene);
-      const mat = new StandardMaterial(`dbg_mat_${boneDef.name}`, scene);
-      mat.diffuseColor = Color3.FromHexString(boneDef.color);
-      mat.emissiveColor = Color3.FromHexString(boneDef.color).scale(0.5);
-      sphere.material = mat;
-      sphere.position = fbxRest.clone();
-      sphere.isPickable = false;
-      sphere.setEnabled(showBonesOnly);
-      debugSpheres.push(sphere);
-    }
-    // DEBUG: Draw direction arrows for each bone
-    // Red line = voxel bone direction, Green line = FBX bone direction
-    // Both start from the bone's voxel rest position
-    const debugArrows: Mesh[] = [];
-    const arrowLen = 0.8;
-    const debugBones = ['LeftArm','LeftForeArm','LeftUpLeg','LeftLeg','LeftHand','Spine','Spine2','Neck','Head','RightArm','RightForeArm','RightUpLeg','RightLeg'];
-    for (const boneName of debugBones) {
-      const boneDef = BONE_DEFS.find(d => d.name === boneName);
-      if (!boneDef?.parent) continue;
-      const vChild = boneRestPosRef.current.get(boneDef.name);
-      const vParent = boneRestPosRef.current.get(boneDef.parent);
-      const fChild = fbxRestViewer.get(boneDef.name);
-      const fParent = fbxRestViewer.get(boneDef.parent);
-      if (!vChild || !vParent || !fChild || !fParent) continue;
-
-      const vDir = vChild.subtract(vParent).normalize().scale(arrowLen);
-      const fDirRaw = fChild.subtract(fParent);
-      const fDir = new Vector3(fDirRaw.x, fDirRaw.y, -fDirRaw.z).normalize().scale(arrowLen);
-      const origin = vParent.clone();
-
-      // Red = voxel direction
-      const redLine = MeshBuilder.CreateLines(`dbg_vdir_${boneName}`, {
-        points: [origin, origin.add(vDir)],
-      }, scene);
-      redLine.color = new Color3(1, 0, 0);
-      redLine.isPickable = false;
-      redLine.setEnabled(showBonesOnly);
-      debugArrows.push(redLine);
-
-      // Green = FBX direction
-      const greenLine = MeshBuilder.CreateLines(`dbg_fdir_${boneName}`, {
-        points: [origin, origin.add(fDir)],
-      }, scene);
-      greenLine.color = new Color3(0, 1, 0);
-      greenLine.isPickable = false;
-      greenLine.setEnabled(showBonesOnly);
-      debugArrows.push(greenLine);
-    }
-    debugSpheres.push(...debugArrows);
-
-    debugBonesRef.current = { spheres: debugSpheres, lines: null };
-    const boneToSphereIdx = new Map<string, number>();
-    let sIdx = 0;
-    for (const boneDef of BONE_DEFS) {
-      if (fbxRestViewer.has(boneDef.name)) boneToSphereIdx.set(boneDef.name, sIdx++);
-    }
-
-    animTimeRef.current = 0;
-    let lastTime = performance.now();
-    const frameDuration = 1.0 / clip.fps;
-
-    // Quaternion conversion: X-reflection (-Three_x, Three_y, Three_z)
-    // q_viewer = (x, -y, -z, w)
-    const toViewerQuat = (dq: [number, number, number, number]) => {
-      switch (quatConv) {
-        case 'correct':  return new Quaternion(dq[0], -dq[1], -dq[2], dq[3]);
-        case 'conv1':    return new Quaternion(-dq[0], -dq[1], dq[2], dq[3]);
-        case 'conv2':    return new Quaternion(dq[0], dq[1], -dq[2], dq[3]);
-        case 'identity': return new Quaternion(dq[0], dq[1], dq[2], dq[3]);
-      }
-    };
-
-    const applyFrame = (frameIndex: number) => {
-      const frame = clip.frames[frameIndex];
-
-      // Step 1: Compute world-space dq in viewer coords for all bones
-      const worldDqs = new Map<string, Quaternion>();
-      for (const boneDef of BONE_DEFS) {
-        const data = frame[boneDef.name];
-        worldDqs.set(boneDef.name, data ? toViewerQuat(data.dq) : Quaternion.Identity());
-      }
-
-      // Step 2: Convert world dq → local rotation with rest pose correction.
-      // For each bone: localRot = correction × parentWorldDq⁻¹ × childWorldDq × correction⁻¹
-      // The correction rotates from voxel bone direction to FBX bone direction.
-      // correction⁻¹ on the right ensures the rotation acts in the FBX frame,
-      // then correction on the left maps the result back to voxel frame.
-      for (const boneDef of BONE_DEFS) {
-        const node = previewNodesRef.current.get(boneDef.name);
-        if (!node) continue;
-
-        const worldDq = worldDqs.get(boneDef.name) ?? Quaternion.Identity();
-
-        if (boneDef.parent) {
-          const parentWorldDq = worldDqs.get(boneDef.parent) ?? Quaternion.Identity();
-          const parentInv = Quaternion.Inverse(parentWorldDq);
-          let localDq = parentInv.multiply(worldDq);
-
-          // Rest pose correction DISABLED for testing
-          // const corr = restCorrections.get(boneDef.name);
-          // if (corr) {
-          //   const corrInv = Quaternion.Inverse(corr);
-          //   localDq = corr.multiply(localDq).multiply(corrInv);
-          // }
-
-          node.rotationQuaternion = localDq;
-        } else {
-          node.rotationQuaternion = worldDq;
-        }
-      }
-
-      // Step 3: Hips position from dp
-      const hipsData = frame['Hips'];
-      const hipsNode = previewNodesRef.current.get('Hips');
-      if (hipsNode && hipsData?.dp) {
-        hipsNode.position.x = voxelHipsPos.x + (-hipsData.dp[0]) * scaleFactor;
-        hipsNode.position.y = voxelHipsPos.y + hipsData.dp[1] * scaleFactor;
-        hipsNode.position.z = voxelHipsPos.z + hipsData.dp[2] * scaleFactor;
-      } else if (hipsNode) {
-        hipsNode.position.copyFrom(voxelHipsPos);
-      }
-
-      // Debug: update sphere positions and lines (using dp world positions)
-      const debugPositions = new Map<string, Vector3>();
-      for (const boneDef of BONE_DEFS) {
-        const fbxRest = fbxRestViewer.get(boneDef.name);
-        if (!fbxRest) continue;
-        const data = frame[boneDef.name];
-        if (data?.dp) {
-          debugPositions.set(boneDef.name, new Vector3(
-            fbxRest.x + (-data.dp[0]) * scaleFactor,
-            fbxRest.y + data.dp[1] * scaleFactor,
-            fbxRest.z + data.dp[2] * scaleFactor,
-          ));
-        } else {
-          debugPositions.set(boneDef.name, fbxRest.clone());
-        }
-      }
-      const spheres = debugBonesRef.current.spheres;
-      for (const boneDef of BONE_DEFS) {
-        const idx = boneToSphereIdx.get(boneDef.name);
-        if (idx === undefined) continue;
-        const pos = debugPositions.get(boneDef.name);
-        if (pos && spheres[idx]) spheres[idx].position.copyFrom(pos);
-      }
-      if (debugBonesRef.current.lines) {
-        debugBonesRef.current.lines.dispose();
-        debugBonesRef.current.lines = null;
-      }
-      const linePoints: Vector3[][] = [];
-      for (const boneDef of BONE_DEFS) {
-        if (!boneDef.parent) continue;
-        const childPos = debugPositions.get(boneDef.name);
-        const parentPos = debugPositions.get(boneDef.parent);
-        if (childPos && parentPos) linePoints.push([parentPos, childPos]);
-      }
-      if (linePoints.length > 0) {
-        const linesMesh = MeshBuilder.CreateLineSystem('dbg_lines', { lines: linePoints }, scene);
-        linesMesh.color = new Color3(1, 1, 0);
-        linesMesh.isPickable = false;
-        linesMesh.setEnabled(showBonesOnly);
-        debugBonesRef.current.lines = linesMesh;
-      }
-    };
-
-    const callback = () => {
-      if (pausedRef.current) return;
-      const now = performance.now();
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-      animTimeRef.current += dt * motionSpeed;
-
-      const loopedTime = animTimeRef.current % clip.duration;
-      const frameIndex = Math.min(
-        Math.floor(loopedTime / frameDuration),
-        clip.frameCount - 1
-      );
-      setCurrentFrame(frameIndex);
-      applyFrame(frameIndex);
-    };
-
-    applyFrameRef.current = applyFrame;
-    animCallbackRef.current = callback;
-    scene.registerBeforeRender(callback);
-    setPlayingMotion(clip.name);
-  }, [motionSpeed, quatConv, calculatedBones, showBonesOnly]);
-
-  const startMotion = useCallback(async (motionName: string) => {
-    const clip = await loadMotionClip(motionName);
-    if (clip) playMotionClip(clip);
-  }, [loadMotionClip, playMotionClip]);
-
-  // Update speed on running animation
-  useEffect(() => {
-    if (playingMotion && loadedClips[playingMotion]) {
-      playMotionClip(loadedClips[playingMotion]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [motionSpeed, quatConv, showBonesOnly]);
-
-  // Toggle voxel mesh / debug bone visibility
-  useEffect(() => {
-    for (const m of previewMeshesRef.current.values()) m.setEnabled(!showBonesOnly);
-    for (const s of debugBonesRef.current.spheres) s.setEnabled(showBonesOnly);
-    if (debugBonesRef.current.lines) debugBonesRef.current.lines.setEnabled(showBonesOnly);
-  }, [showBonesOnly]);
-
-  const selMarker = MARKER_DEFS.find(m => m.name === selectedMarker);
-  const selPos = selectedMarker ? markers[selectedMarker] : null;
-  const currentViewDef = VIEW_DEFS.find(v => v.key === viewDir)!;
-  const visibleMarkers = getVisibleMarkers();
-  const mirrorCenterX = getMirrorCenterX();
-
+  // ========== JSXレンダリング ==========
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', background: '#1a1a2e' }}>
-      {/* Sidebar */}
+      {/* サイドバー（左パネル） */}
       <div style={{
         width: 320, minWidth: 320, background: '#0f0f23', color: '#ccc',
         borderRight: '1px solid #333', display: 'flex', flexDirection: 'column', overflow: 'auto',
@@ -2018,7 +753,7 @@ export default function BoneConfigPage() {
             </div>
             {BONE_DEFS.map(bone => {
               const pos = calculatedBones[bone.name];
-              const depth = getDepth(bone.name);
+              const depth = getBoneDepth(bone.name);
               return (
                 <div
                   key={bone.name}
@@ -2204,12 +939,7 @@ export default function BoneConfigPage() {
                     if (!scene) return;
                     const { cx, cy } = centerRef.current;
                     // Stop current motion
-                    if (animCallbackRef.current) {
-                      scene.unregisterBeforeRender(animCallbackRef.current);
-                      animCallbackRef.current = null;
-                    }
-                    const wasPlaying = playingMotion;
-                    setPlayingMotion(null);
+                    stopMotion();
 
                     // Dispose old preview
                     for (const m of previewMeshesRef.current.values()) m.dispose();
@@ -2237,13 +967,13 @@ export default function BoneConfigPage() {
                       }
                     }
 
-                    const { nodes, meshes } = buildSkeletalPreview(mergedVoxels, calculatedBones, scene, cx, cy);
+                    const { nodes, meshes } = buildSkeletalCharacter(mergedVoxels, calculatedBones, scene, cx, cy);
                     previewNodesRef.current = nodes;
                     previewMeshesRef.current = meshes;
 
                     // Restart motion if was playing
-                    if (wasPlaying && loadedClips[wasPlaying]) {
-                      playMotionClip(loadedClips[wasPlaying]);
+                    if (playingMotion && loadedClips[playingMotion]) {
+                      playMotionClip(loadedClips[playingMotion]);
                     }
                   }}
                   style={{
@@ -2270,7 +1000,7 @@ export default function BoneConfigPage() {
               </div>
               {BONE_DEFS.map(bone => {
                 const hasMesh = previewMeshesRef.current.has(bone.name);
-                const depth = getDepth(bone.name);
+                const depth = getBoneDepth(bone.name);
                 return (
                   <div
                     key={bone.name}
@@ -2378,14 +1108,4 @@ export default function BoneConfigPage() {
       </div>
     </div>
   );
-}
-
-function getDepth(boneName: string): number {
-  let depth = 0;
-  let current = BONE_DEFS.find(b => b.name === boneName);
-  while (current?.parent) {
-    depth++;
-    current = BONE_DEFS.find(b => b.name === current!.parent);
-  }
-  return depth;
 }

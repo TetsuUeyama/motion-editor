@@ -10,6 +10,7 @@ const pages = [
   { href: '/bone-config', title: 'Bone Config', desc: 'ボクセルキャラクターのボーン設定・モーション再生' },
   // モデルインポートページ: パス、タイトル、説明文を持つオブジェクト
   { href: '/model-import', title: 'Model Import', desc: '3Dモデル読み込み・パーツ分類・ボクセル化' },
+  { href: '/character-viewer', title: 'Character Viewer', desc: 'character-config.jsonの3Dボディメッシュ表示' },
 ];
 
 // ホームページコンポーネント（トップページの表示を担当）
