@@ -1,6 +1,6 @@
 'use client';
 
-import type { Step, PartConfig } from '@/utils/model-import/types';
+import type { Step, PartConfig } from '@/utils/model-import/constants';
 
 interface CategoryInfo {
   color: string;

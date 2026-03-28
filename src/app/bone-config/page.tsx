@@ -1,6 +1,6 @@
 'use client';
 
-import BoneConfigView from '@/views/bone-config/BoneConfigView';
+import BoneConfigView from '@/views/BoneConfigView';
 
 export default function BoneConfigPage() {
   return <BoneConfigView />;

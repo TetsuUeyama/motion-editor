@@ -4,7 +4,7 @@
 
 import type { Vec3, BoneDef, MotionClip } from '@/utils/voxel-core';
 import { BONE_DEFS } from '@/utils/voxel-core';
-import type { ContactMotionExport } from './types';
+import type { ContactMotionExport } from './constants';
 import { BODY_SIZE, VSCALE } from './constants';
 
 /** Rotate a vector by a quaternion: v' = q * v * q_conj */

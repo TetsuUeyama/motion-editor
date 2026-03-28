@@ -1,6 +1,6 @@
 'use client';
 
-import type { PartConfig } from '@/utils/model-import/types';
+import type { PartConfig } from '@/utils/model-import/constants';
 import type { PartCategory } from '@/utils/auto-rigger';
 
 interface CategoryInfo {

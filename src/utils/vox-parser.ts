@@ -1,16 +1,14 @@
 // MagicaVoxel (.vox) ファイルのパーサーと関連型定義
 
+// VoxelEntry は voxel-core.ts で定義されている唯一の情報源からre-export
+export type { VoxelEntry } from '@/utils/voxel-core';
+import type { VoxelEntry } from '@/utils/voxel-core';
+
 // VOXファイルをパースした結果のモデルデータ
 export interface VoxModel {
-  sizeX: number; sizeY: number; sizeZ: number; // ボクセルグリッドの各軸サイズ
-  voxels: { x: number; y: number; z: number; colorIndex: number }[]; // 各ボクセルの座標とパレットインデックス
-  palette: { r: number; g: number; b: number }[]; // 256色パレット（各色は0-1の正規化値）
-}
-
-// ボクセル1個の座標とRGBカラー（パレットから解決済み）
-export interface VoxelEntry {
-  x: number; y: number; z: number; // ボクセル座標
-  r: number; g: number; b: number; // 色（0-1の正規化値）
+  sizeX: number; sizeY: number; sizeZ: number;
+  voxels: { x: number; y: number; z: number; colorIndex: number }[];
+  palette: { r: number; g: number; b: number }[];
 }
 
 // VOXバイナリファイルをパースしてVoxModelを返す
@@ -98,26 +96,6 @@ export async function loadVoxFile(url: string): Promise<{ model: VoxModel; voxel
 
 // ボクセルメッシュ構築用の定数群
 
-// ボクセル1個の1辺のサイズ（ワールド座標単位）
-// 85 * 0.01 = 0.85 ユニット幅のキャラクターになる
-export const SCALE = 0.01;
+// SCALE は voxel-core.ts の VOXEL_SCALE からエイリアス (後方互換)
+export { VOXEL_SCALE as SCALE } from '@/utils/voxel-core';
 
-// 6方向の隣接ボクセルオフセット（+X, -X, +Y, -Y, +Z, -Z）
-// フェイスカリング（隣にボクセルがある面を描画しない）に使用
-export const FACE_DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
-
-// 各面の4頂点座標（ボクセルのローカル座標、0-1の範囲）
-// 6面分の配列。各面は4頂点で構成される四角形
-// 順序: +X面, -X面, +Y面, -Y面, +Z面, -Z面
-export const FACE_VERTS = [
-  [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]], // +X面（右面）
-  [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]], // -X面（左面）
-  [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]], // +Y面（奥面）
-  [[0, 0, 1], [0, 0, 0], [1, 0, 0], [1, 0, 1]], // -Y面（手前面）
-  [[0, 0, 1], [0, 1, 1], [1, 1, 1], [1, 0, 1]], // +Z面（上面）
-  [[1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 0]], // -Z面（下面）
-];
-
-// 各面の法線ベクトル（面の向きを示す単位ベクトル）
-// ライティング計算やフェイスカリングの判定に使用
-export const FACE_NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];

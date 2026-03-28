@@ -1,8 +1,66 @@
 /**
- * auto-rigger constants and classification helpers
+ * auto-rigger type definitions, constants and classification helpers
  */
 
-import type { MarkerGroup, PartCategory } from './types';
+import type { Vec3 } from '@/utils/voxel-core';
+
+// ============================================================
+// Type definitions
+// ============================================================
+
+// MarkerGroup (UI display: label, marker names, color)
+export interface MarkerGroup { label: string; names: string[]; color: string; }
+
+// Part classification
+export type PartCategory = 'body' | 'hair' | 'clothing' | 'other' | 'exclude';
+
+// Deformation parameters (voxelization and bone calculation shared)
+export interface DeformParams {
+  srcH: number[]; tgtH: number[];
+  srcWD: number[]; tgtWD: number[];
+  baseScale: number; centerX: number; centerZ: number;
+  footY: number; bH: number;
+}
+
+// Skeletal model JSON export format
+export interface SkeletalModelExport {
+  gridSize: { x: number; y: number; z: number };
+  voxelScale: number;
+  bones: {
+    name: string;
+    label: string;
+    parent: string | null;
+    position: { x: number; y: number; z: number };
+    voxels: { x: number; y: number; z: number; r: number; g: number; b: number }[];
+  }[];
+}
+
+// contactform-compatible segments bundle export format
+export interface SegmentBundleExport {
+  grid: { gx: number; gy: number; gz: number };
+  palette: number[][];            // [[r,g,b], ...] normalized 0-1
+  segments: Record<string, number[]>; // boneName -> flat [x,y,z,colorIndex, ...]
+}
+
+// contactform-compatible segments info export format
+export interface SegmentsInfoExport {
+  voxel_size: number;
+  grid: { gx: number; gy: number; gz: number };
+  bone_positions: Record<string, { head_voxel: number[]; tail_voxel: number[] }>;
+  segments: Record<string, { file: string; voxels: number }>;
+}
+
+// Contact motion export format
+export interface ContactMotionExport {
+  fps: number;
+  frame_count: number;
+  babylonFormat: true;
+  bones: Record<string, { matrices: number[][] }>;
+}
+
+// ============================================================
+// Constants and classification helpers
+// ============================================================
 
 export const CATEGORY_INFO: Record<PartCategory, { label: string; labelJa: string; color: string }> = {
   body:     { label: 'Body',     labelJa: 'ボディ',       color: '#cc8866' },
@@ -24,9 +82,8 @@ export function guessCategory(meshName: string): PartCategory {
 }
 
 export const BODY_SIZE = { x: 85, y: 34, z: 102 };
-export const VSCALE = 0.01;
-
-import type { Vec3 } from '@/utils/voxel-core';
+// VSCALE は voxel-core.ts の VOXEL_SCALE からエイリアス (後方互換)
+export { VOXEL_SCALE as VSCALE } from '@/utils/voxel-core';
 
 export const TARGET_MARKERS: Record<string, Vec3> = {
   Chin:       { x: 42.5, y: 17, z: 81 },

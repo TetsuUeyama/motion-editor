@@ -8,7 +8,7 @@ import type { VoxelEntry } from '@/utils/vox-parser';
 import { getDefaultMarkers, type MarkerData } from '@/utils/voxel-skeleton';
 import type { ModelEntry } from '@/utils/model-registry';
 import { buildBodyMesh, type EquipPart } from '@/utils/bone-config/constants';
-import type { useBoneConfigRefs } from './useBoneConfigRefs';
+import type { useBoneConfigRefs } from './useBoneConfigScene';
 
 interface ModelHookParams {
   refs: ReturnType<typeof useBoneConfigRefs>;

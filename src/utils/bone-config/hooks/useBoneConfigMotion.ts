@@ -8,7 +8,7 @@ import {
 } from '@babylonjs/core';
 import { BONE_DEFS, type Vec3, type MotionClip, voxelToViewer } from '@/utils/voxel-skeleton';
 import { MOTION_FILES, type QuatConversion } from '@/utils/bone-config/constants';
-import type { useBoneConfigRefs } from './useBoneConfigRefs';
+import type { useBoneConfigRefs } from './useBoneConfigScene';
 
 // フックが受け取るパラメータ型
 interface MotionHookParams {

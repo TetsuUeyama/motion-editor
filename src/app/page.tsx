@@ -1,7 +1,6 @@
 'use client';
 
-import { NAV_PAGES } from '@/utils/navigation';
-import { NavigationCard } from '@/components/NavigationCard';
+import { NAV_PAGES, NavigationCard } from '@/components/NavigationCard';
 
 export default function Home() {
   return (
