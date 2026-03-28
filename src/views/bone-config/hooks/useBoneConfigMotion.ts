@@ -6,8 +6,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Vector3, Mesh, MeshBuilder, StandardMaterial, Color3, Quaternion,
 } from '@babylonjs/core';
-import { BONE_DEFS, type Vec3, type MotionClip, voxelToViewer } from '@/lib/voxel-skeleton';
-import { MOTION_FILES, type QuatConversion } from '../constants';
+import { BONE_DEFS, type Vec3, type MotionClip, voxelToViewer } from '@/utils/voxel-skeleton';
+import { MOTION_FILES, type QuatConversion } from '@/utils/bone-config/constants';
 import type { useBoneConfigRefs } from './useBoneConfigRefs';
 
 // フックが受け取るパラメータ型

@@ -17,10 +17,10 @@ export {
   voxelToViewer, threeQuatToViewer, distToSegSq,
   assignVoxelsToBones, addSphereCaps,
   createUnlitMaterial, buildSkeletalCharacter,
-} from '@/lib/voxel-core';
+} from '@/utils/voxel-core';
 
 // このファイル内でも使用するため直接import
-import { type Vec3, type MotionClip, BONE_DEFS } from '@/lib/voxel-core';
+import { type Vec3, type MotionClip, BONE_DEFS } from '@/utils/voxel-core';
 
 // マーカー名→座標のマップ型
 export type MarkerData = Record<string, Vec3>;

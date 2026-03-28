@@ -4,9 +4,9 @@
  */
 
 import { Scene, Mesh, VertexData, Vector3 } from '@babylonjs/core';
-import { SCALE, FACE_DIRS, FACE_VERTS, FACE_NORMALS } from '@/lib/vox-parser';
-import type { VoxelEntry } from '@/lib/vox-parser';
-import { type Vec3, createUnlitMaterial } from '@/lib/voxel-skeleton';
+import { SCALE, FACE_DIRS, FACE_VERTS, FACE_NORMALS } from '@/utils/vox-parser';
+import type { VoxelEntry } from '@/utils/vox-parser';
+import { type Vec3, createUnlitMaterial } from '@/utils/voxel-skeleton';
 
 // ========================================================================
 // マーカー定義

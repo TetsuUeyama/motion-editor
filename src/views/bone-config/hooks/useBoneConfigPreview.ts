@@ -6,10 +6,10 @@ import { useCallback, useState } from 'react';
 import {
   Vector3, TransformNode, Mesh,
 } from '@babylonjs/core';
-import { BONE_DEFS, type Vec3, voxelToViewer } from '@/lib/voxel-skeleton';
-import { loadVoxFile, SCALE } from '@/lib/vox-parser';
-import type { VoxelEntry } from '@/lib/vox-parser';
-import type { EquipPart, ViewDirection } from '../constants';
+import { BONE_DEFS, type Vec3, voxelToViewer } from '@/utils/voxel-skeleton';
+import { loadVoxFile, SCALE } from '@/utils/vox-parser';
+import type { VoxelEntry } from '@/utils/vox-parser';
+import type { EquipPart, ViewDirection } from '@/utils/bone-config/constants';
 import type { useBoneConfigRefs } from './useBoneConfigRefs';
 
 // プレビュー構築関数の型（page.tsxから渡される）

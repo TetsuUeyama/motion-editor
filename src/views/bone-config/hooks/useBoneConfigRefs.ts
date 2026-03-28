@@ -8,9 +8,9 @@ import { useRef } from 'react';
 // Babylon.jsの型（Refの型アノテーション用）
 import type { Scene, ArcRotateCamera, Mesh, TransformNode, Vector3, Plane } from '@babylonjs/core';
 // カメラビュー方向の型
-import type { ViewDirection } from '../constants';
+import type { ViewDirection } from '@/utils/bone-config/constants';
 // ボクセルデータの型
-import type { VoxelEntry } from '@/lib/vox-parser';
+import type { VoxelEntry } from '@/utils/vox-parser';
 
 export function useBoneConfigRefs() {
   // ========== 3Dビューワー関連 ==========
