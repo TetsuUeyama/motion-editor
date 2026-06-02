@@ -110,19 +110,22 @@ export function arpToSegment(bone: string): string | null {
   if (/thigh/.test(n)) return `${s}UpperLeg`;
   if (/leg|knee/.test(n)) return `${s}LowerLeg`;
 
-  // --- 指（手）--- forearm/arm より先に判定。
-  // distal(末端)は intermediate に統合する：絶対ワールド向き指定だと FAP の指先が
-  // ほぼ回らず anna 側で逆回転して取り残されるため、中節のカールに追従させる。
+  // --- 指（手）--- forearm/arm より先に判定。各関節(proximal/intermediate/distal)を保持。
   if (/thumb1|c_thumb1/.test(n)) return `${s}ThumbProximal`;
-  if (/c_thumb2|c_thumb3/.test(n)) return `${s}ThumbIntermediate`;
+  if (/c_thumb2/.test(n)) return `${s}ThumbIntermediate`;
+  if (/c_thumb3/.test(n)) return `${s}ThumbDistal`;
   if (/index1|c_index1/.test(n)) return `${s}IndexProximal`;
-  if (/c_index2|c_index3/.test(n)) return `${s}IndexIntermediate`;
+  if (/c_index2/.test(n)) return `${s}IndexIntermediate`;
+  if (/c_index3/.test(n)) return `${s}IndexDistal`;
   if (/middle1|c_middle1/.test(n)) return `${s}MiddleProximal`;
-  if (/c_middle2|c_middle3/.test(n)) return `${s}MiddleIntermediate`;
+  if (/c_middle2/.test(n)) return `${s}MiddleIntermediate`;
+  if (/c_middle3/.test(n)) return `${s}MiddleDistal`;
   if (/ring1|c_ring1/.test(n)) return `${s}RingProximal`;
-  if (/c_ring2|c_ring3/.test(n)) return `${s}RingIntermediate`;
+  if (/c_ring2/.test(n)) return `${s}RingIntermediate`;
+  if (/c_ring3/.test(n)) return `${s}RingDistal`;
   if (/pinky1|c_pinky1/.test(n)) return `${s}LittleProximal`;
-  if (/c_pinky2|c_pinky3/.test(n)) return `${s}LittleIntermediate`;
+  if (/c_pinky2/.test(n)) return `${s}LittleIntermediate`;
+  if (/c_pinky3/.test(n)) return `${s}LittleDistal`;
 
   if (/^hand/.test(n)) return `${s}Hand`;
   if (/shoulder/.test(n)) return `${s}Shoulder`;

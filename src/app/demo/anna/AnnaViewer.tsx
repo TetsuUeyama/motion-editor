@@ -37,6 +37,10 @@ const TEST_BONES: TestBone[] = [
   { key: "rForearm", label: "右前腕", bone: "RightLowerArm", axis: "z" },
   { key: "spine", label: "背骨(前傾)", bone: "Spine", axis: "x" },
   { key: "head", label: "首", bone: "Neck", axis: "x" },
+  // 指の追従（バインド）確認用。Proximal を回すと子(中節/末節)のボクセルも追従するはず
+  { key: "lIndex", label: "左人差し指", bone: "LeftIndexProximal", axis: "x" },
+  { key: "lThumb", label: "左親指", bone: "LeftThumbProximal", axis: "x" },
+  { key: "rIndex", label: "右人差し指", bone: "RightIndexProximal", axis: "x" },
 ];
 
 export function AnnaViewer() {
