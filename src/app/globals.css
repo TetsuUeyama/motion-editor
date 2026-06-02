@@ -1,0 +1,16 @@
+/*
+ * source("../") で Tailwind v4 の自動コンテンツ検出を src/ 配下に限定する。
+ * 指定しないと検出ルートが親ディレクトリ (developsecond/。別プロジェクトや
+ * public/assets の大量 GLB を含む) に広がり、走査がメモリを食い潰して
+ * webpack / Turbopack のビルドが OOM する。
+ */
+@import "tailwindcss" source("../");
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #0b0d12;
+  color: #e6e8eb;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}

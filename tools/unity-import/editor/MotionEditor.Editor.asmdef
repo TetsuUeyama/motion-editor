@@ -1,0 +1,22 @@
+{
+  "name": "MotionEditor.Editor",
+  "rootNamespace": "MotionEditor",
+  "references": [
+    "UnityGLTFScripts"
+  ],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [
+    {
+      "name": "org.khronos.unitygltf",
+      "expression": "",
+      "define": "MOTION_EDITOR_HAS_UNITYGLTF"
+    }
+  ],
+  "noEngineReferences": false
+}

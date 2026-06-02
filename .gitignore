@@ -2,5 +2,16 @@ node_modules/
 .next/
 out/
 *.tsbuildinfo
+next-env.d.ts
 .env
 .env.local
+
+# Unity import temp
+tools/unity-import/.cache/
+
+# 変換済みアセット (Fighting Animset Pro = Kubold の有料アセット由来。再配布不可)
+# import:unity で各自ローカル生成する想定なのでコミットしない
+/public/assets/
+
+# ローカルの dev / import ログ
+*.log
