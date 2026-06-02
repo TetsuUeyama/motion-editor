@@ -15,3 +15,10 @@ tools/unity-import/.cache/
 
 # ローカルの dev / import ログ
 *.log
+
+# anna voxel モデル (ユーザのローカルアセット。サイズ大)
+/public/anna/
+
+# 検証用の一時スクショ / スクリプト
+shot_*.png
+__shot*.mjs

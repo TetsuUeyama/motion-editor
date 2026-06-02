@@ -8,3 +8,11 @@ export {
   retargetAnimationGroups,
   type RetargetResult,
 } from "./retargetAnimations";
+
+export {
+  loadClipSettings,
+  type ClipSettings,
+  type ClipSettingsAsset,
+  type ClipSettingsJson,
+  type ClipRootMotionAxes,
+} from "./clipSettings";

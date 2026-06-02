@@ -69,6 +69,17 @@ export default function Home() {
               </div>
             </Link>
           </li>
+          <li>
+            <Link
+              href="/demo/anna"
+              className="block rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3 hover:border-neutral-700"
+            >
+              <div className="font-medium">anna voxel（移植先・静止表示）</div>
+              <div className="text-sm text-neutral-400">
+                ボクセルモデル anna を Babylon に表示（モーション適用の土台）
+              </div>
+            </Link>
+          </li>
         </ul>
       </section>
 

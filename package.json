@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "import:unity": "tsx tools/unity-import/cli/import.ts"
+    "import:unity": "tsx tools/unity-import/cli/import.ts",
+    "extract:clip-settings": "tsx tools/unity-import/cli/extract-clip-settings.ts",
+    "export:motions": "tsx tools/motion-lib/export-motions.ts"
   },
   "dependencies": {
     "@babylonjs/core": "^7.42.0",

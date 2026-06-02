@@ -21,6 +21,8 @@ import "@babylonjs/loaders/glTF";
 
 import {
   retargetAnimationGroups,
+  loadClipSettings,
+  type ClipSettings,
   type AssetManifestJson,
   type AssetManifestEntry,
 } from "@/runtime";
@@ -84,6 +86,9 @@ function FapViewerInner({
 
   // 再バインド済み AnimationGroup を name で引けるよう保持
   const groupsRef = useRef<Map<string, AnimationGroup>>(new Map());
+  // clip-settings.json（loop / root motion / events）。曲線は GLB、設定はこちら。
+  const clipSettingsRef = useRef<Map<string, ClipSettings>>(new Map());
+  const [activeSettings, setActiveSettings] = useState<ClipSettings | null>(null);
 
   const handleSceneReady = async (scene: Scene): Promise<() => void> => {
     setupEnvironment(scene);
@@ -120,6 +125,8 @@ function FapViewerInner({
         map.set(g.name, g);
       }
       groupsRef.current = map;
+      // 各クリップの再生設定（loop 等）をロード。無ければ空＝loop 既定 true。
+      clipSettingsRef.current = await loadClipSettings();
 
       // BindPose / tpose は最後に回しつつ全クリップを並べる
       const names = groups
@@ -152,9 +159,12 @@ function FapViewerInner({
     for (const [n, g] of groupsRef.current) {
       if (n !== name) g.stop();
     }
-    target.start(true);
+    // clip-settings.json の loop を反映（攻撃などは 1 回再生、Idle/Walk はループ）
+    const settings = clipSettingsRef.current.get(name) ?? null;
+    target.start(settings?.loop ?? true);
     target.setWeightForAllAnimatables(1);
     setActive(name);
+    setActiveSettings(settings);
   };
 
   return (
@@ -197,6 +207,25 @@ function FapViewerInner({
               <div className="mt-2 text-[11px] text-neutral-500">
                 retarget: {stats.matched} channels matched
                 {stats.skipped > 0 && `, ${stats.skipped} skipped`}
+              </div>
+            )}
+            {active && (
+              <div className="mt-1 text-[11px] text-neutral-400">
+                <span className="font-mono text-neutral-200">{active}</span>
+                {activeSettings ? (
+                  <>
+                    {" — "}loop:{" "}
+                    <span className={activeSettings.loop ? "text-emerald-400" : "text-neutral-500"}>
+                      {activeSettings.loop ? "ON" : "OFF"}
+                    </span>
+                    {" / rootXZ:"}
+                    {activeSettings.rootMotion.positionXZ ? "✓" : "—"}
+                    {" / frames "}
+                    {activeSettings.firstFrame}-{activeSettings.lastFrame}
+                  </>
+                ) : (
+                  <span className="text-neutral-600"> — (no clip-settings.json)</span>
+                )}
               </div>
             )}
             <div className="mt-3 min-h-0 flex-1 overflow-auto border-t border-neutral-800 pt-3">
