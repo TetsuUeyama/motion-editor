@@ -33,22 +33,25 @@ interface TestBone {
   /** 指定時はこのボーン群を同じ角度で曲げる（指のカール用：3関節を分割して屈曲） */
   chain?: string[];
 }
-/** 指1本の3関節（付け根→中節→末節）をまとめて曲げるチェーン */
+const FINGERS = ["Thumb", "Index", "Middle", "Ring", "Little"] as const;
+/** 指1本の3関節（付け根→中節→末節） */
 const fingerChain = (side: "Left" | "Right", finger: string): string[] => [
   `${side}${finger}Proximal`,
   `${side}${finger}Intermediate`,
   `${side}${finger}Distal`,
 ];
+/** 片手の全5指×3関節（握る/開く用） */
+const handChain = (side: "Left" | "Right"): string[] =>
+  FINGERS.flatMap((f) => fingerChain(side, f));
 const TEST_BONES: TestBone[] = [
   { key: "rArm", label: "右上腕", bone: "RightUpperArm", axis: "z" },
   { key: "lArm", label: "左上腕", bone: "LeftUpperArm", axis: "z" },
   { key: "rForearm", label: "右前腕", bone: "RightLowerArm", axis: "z" },
   { key: "spine", label: "背骨(前傾)", bone: "Spine", axis: "x" },
   { key: "head", label: "首", bone: "Neck", axis: "x" },
-  // 指は3関節を分割して曲げる（1本に Proximal/中節/末節）。スライダーで握る/開くを再現
-  { key: "lIndex", label: "左人差し指(屈曲)", bone: "LeftIndexProximal", axis: "z", chain: fingerChain("Left", "Index") },
-  { key: "lThumb", label: "左親指(屈曲)", bone: "LeftThumbProximal", axis: "z", chain: fingerChain("Left", "Thumb") },
-  { key: "rIndex", label: "右人差し指(屈曲)", bone: "RightIndexProximal", axis: "z", chain: fingerChain("Right", "Index") },
+  // 手全体を握る/開く：全5指×3関節を分割屈曲（再生時は各クリップのデータで自動カール）
+  { key: "lGrab", label: "左手 握る/開く", bone: "LeftIndexProximal", axis: "z", chain: handChain("Left") },
+  { key: "rGrab", label: "右手 握る/開く", bone: "RightIndexProximal", axis: "z", chain: handChain("Right") },
 ];
 
 export function AnnaViewer() {
