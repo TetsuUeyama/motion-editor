@@ -30,17 +30,25 @@ interface TestBone {
   label: string;
   bone: string;
   axis: "x" | "y" | "z";
+  /** 指定時はこのボーン群を同じ角度で曲げる（指のカール用：3関節を分割して屈曲） */
+  chain?: string[];
 }
+/** 指1本の3関節（付け根→中節→末節）をまとめて曲げるチェーン */
+const fingerChain = (side: "Left" | "Right", finger: string): string[] => [
+  `${side}${finger}Proximal`,
+  `${side}${finger}Intermediate`,
+  `${side}${finger}Distal`,
+];
 const TEST_BONES: TestBone[] = [
   { key: "rArm", label: "右上腕", bone: "RightUpperArm", axis: "z" },
   { key: "lArm", label: "左上腕", bone: "LeftUpperArm", axis: "z" },
   { key: "rForearm", label: "右前腕", bone: "RightLowerArm", axis: "z" },
   { key: "spine", label: "背骨(前傾)", bone: "Spine", axis: "x" },
   { key: "head", label: "首", bone: "Neck", axis: "x" },
-  // 指の追従（バインド）確認用。Proximal を回すと子(中節/末節)のボクセルも追従するはず
-  { key: "lIndex", label: "左人差し指", bone: "LeftIndexProximal", axis: "x" },
-  { key: "lThumb", label: "左親指", bone: "LeftThumbProximal", axis: "x" },
-  { key: "rIndex", label: "右人差し指", bone: "RightIndexProximal", axis: "x" },
+  // 指は3関節を分割して曲げる（1本に Proximal/中節/末節）。スライダーで握る/開くを再現
+  { key: "lIndex", label: "左人差し指(屈曲)", bone: "LeftIndexProximal", axis: "z", chain: fingerChain("Left", "Index") },
+  { key: "lThumb", label: "左親指(屈曲)", bone: "LeftThumbProximal", axis: "z", chain: fingerChain("Left", "Thumb") },
+  { key: "rIndex", label: "右人差し指(屈曲)", bone: "RightIndexProximal", axis: "z", chain: fingerChain("Right", "Index") },
 ];
 
 export function AnnaViewer() {
@@ -116,25 +124,31 @@ export function AnnaViewer() {
     playerRef.current?.stop();
     setPlaying(null);
     setAngles((a) => ({ ...a, [t.key]: deg }));
-    const node = skelRef.current?.nodesByName.get(t.bone);
-    if (!node) return;
-    node.rotationQuaternion = null; // Euler を有効にする
     const rad = (deg * Math.PI) / 180;
-    node.rotation = new Vector3(
-      t.axis === "x" ? rad : 0,
-      t.axis === "y" ? rad : 0,
-      t.axis === "z" ? rad : 0,
-    );
+    // chain 指定（指）なら各関節を同角度で曲げてカールさせる
+    const bones = t.chain ?? [t.bone];
+    for (const bn of bones) {
+      const node = skelRef.current?.nodesByName.get(bn);
+      if (!node) continue;
+      node.rotationQuaternion = null; // Euler を有効にする
+      node.rotation = new Vector3(
+        t.axis === "x" ? rad : 0,
+        t.axis === "y" ? rad : 0,
+        t.axis === "z" ? rad : 0,
+      );
+    }
   };
 
   const resetPose = () => {
     playerRef.current?.stop();
     setPlaying(null);
     for (const t of TEST_BONES) {
-      const node = skelRef.current?.nodesByName.get(t.bone);
-      if (node) {
-        node.rotationQuaternion = null;
-        node.rotation = Vector3.Zero();
+      for (const bn of t.chain ?? [t.bone]) {
+        const node = skelRef.current?.nodesByName.get(bn);
+        if (node) {
+          node.rotationQuaternion = null;
+          node.rotation = Vector3.Zero();
+        }
       }
     }
     setAngles({});
