@@ -1,6 +1,14 @@
 # 再開用 引き継ぎ記録（Fighting Animset Pro → 3D 格闘ゲーム）
 
-最終更新: 2026-05-31。次回はまずこのファイルを読めば状況を把握できる。
+最終更新: 2026-06-03。次回はまずこのファイルを読めば状況を把握できる。
+
+> **2026-06-03 追記（anna リターゲット忠実度の調査結論）**: anna の指は動作確認済み（全5指カール、`/demo/anna` の「握る/開く」スライダーで確認可、コミット bcfe020）。
+> ただし**前腕など関節の曲げが基準(Maskman)と合わない**問題を徹底調査し、**リアルタイムの回転数式では原理的に直らない**と確定した。
+> 真因＝**anna voxel モデルが A-pose（腕ほぼ直線）なのに FAP モーションは肘45°曲げのバインドポーズ前提**という rest 幾何の不一致。
+> world-delta×符号8/local-conjugation×軸整列24/per-bone方向整合×4 を全て実機検証して全滅（屈曲振幅 基準比 −21〜−104°、ジャブ系で壊滅）。
+> per-bone 補正は親子の相対回転(=屈曲)を壊すので逆効果、グローバル補正は相対“量”は保つが軸がひねりに乗り屈曲が目減り。
+> **本当の修正は要コンテンツ作業**：【A】voxel モデルを FAP バインド姿勢に作り直す、または【B】Blender 等でオフライン再焼き（＝下記「retarget の限界」の王道）。詳細は共通メモリ `caveat_anna_retarget_rest_geometry.md`。
+> 検証手法: `/demo/fap`(Maskman=基準) と `/demo/anna` を puppeteer で同一クリップ再生し、肘屈曲角の min/max/振幅（位相非依存）を比較。両 Viewer に一時的に `window.__anna`/`window.__fap` を露出させて計測した（コミットには含めない）。
 
 ---
 
@@ -20,8 +28,8 @@ Kubold **Fighting Animset Pro (FAP)** を Babylon.js に取り込み（265モー
   - （旧）`buildRiggedVoxel`=剛体(隙間), `buildSkinnedVoxel`=2ボーン自動近似(不十分)。現行は weighted 版。
   - `AnnaMotionPlayer` の STD_TO_ANNA に**手指30ボーン**(thumb1.l/c_thumb2.l… ↔ Left/RightThumb/Index/Middle/Ring/Little Proximal/Intermediate/Distal)も追加済み。
   - `AnnaMotionPlayer` + `export-fap-skeleton.ts`(fap-skeleton.json) + `export-motions.ts`(motions/*.json): **v2 ワールド空間 delta リターゲット**。FAP を FK→ rest からの world delta → anna(rest=identity)へ。
-  - **★handedness 注意**: Blender→Babylon を `(x,z,y)` にしたため深さ(Babylon Z)軸の鏡像。リターゲット delta を鏡像補正 `(x,y,z,w)→(-x,-y,z,w)` で整合済み。左右(X)は元々OK。もし逆に見える技があれば残り軸符号を1つ反転。
-  - 残課題: LBS の伸び/痩せ・首/頭のチャンク感、root motion 未適用、衣装パーツ未追加。
+  - **★handedness 注意**: Blender→Babylon を `(x,z,y)` にしたため深さ(Babylon Z)軸の鏡像。リターゲット delta を鏡像補正 `(x,y,z,w)→(-x,-y,z,w)` で整合済み。左右(X)は元々OK。**※ただし「符号を反転して関節の曲げを直す」のは時間の無駄（2026-06-03に32+通り検証して全滅）。冒頭の追記参照。**
+  - 残課題: **関節の曲げ忠実度（rest 幾何不一致・要オフライン再焼き or モデル再ポーズ。冒頭追記参照）**、LBS の伸び/痩せ・首/頭のチャンク感、root motion 未適用、衣装パーツ未追加。
 - **各モーションのファイル化（アクションライブラリ）**: `tools/motion-lib/export-motions.ts`（`npx tsx tools/motion-lib/export-motions.ts`）が GLB の各アニメを **1クリップ=1 JSON**（`public/assets/motions/<clip>.motion.json`、計238本）に分解。**標準(Humanoid)ボーン名キーの TRS トラック＋clip-settings＋auxTracks(twist等)＋boneMap** を持つモデル非依存形式。`index.json` に一覧。→ 別モデルへは「標準名→ターゲットボーン名」マップで適用する設計。次タスク = anna(qm_mustardui) 用 voxel ローダー＋ARP 適用。
 - **モーション設定のファイル化**: `tools/unity-import/cli/extract-clip-settings.ts`（`npx tsx tools/unity-import/cli/extract-clip-settings.ts --project "<UnityProj>"` ※npm run 経由は PowerShell で `--` が壊れる）が FBX `.meta` から **`public/assets/clip-settings.json`** を生成（clip 名→ loop / rootMotion 各軸 / bakeIntoPose / events）。ランタイムは `loadClipSettings()`（`src/runtime/loader/clipSettings.ts`）で読み、FapViewer が**クリップごとの loop を反映**＋設定を表示。※GLB＝曲線、clip-settings.json＝再生設定 の二本立て。rootMotion フラグは FAP 全クリップ true（root motion ベース設計の反映）で、実移動量は別途 GLB の Root 曲線解析が必要。events は FAP は空。
 - **3システム（並行実装）**:
